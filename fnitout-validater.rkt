@@ -3,11 +3,14 @@
 
 ;; https://doi.org/10.1145/3592449
 
+(provide make-Validater
+         validate)
+
 (require "fnitout-command.rkt"
          "fnitout-machine.rkt")
 
 (require/typed "fnitout-parser.rkt"
-               [fnitout-parse (String -> Any)])
+               [fnitout-parse (String -> (Listof Command))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -23,7 +26,7 @@
 (: make-Validater : Positive-Integer Positive-Integer String -> Validater)
 (define (make-Validater needle-count carrier-count str)
   (Validater
-   (cast (fnitout-parse str) (Listof Command)) ;; FIXME ideally this would be a Syntax object, retaining line numbers of original Knitout script
+   (fnitout-parse str)
    needle-count  ;; FIXME use to create contract on Needle
    carrier-count ;; FIXME use to create contract on Carrier
    (make-MachineState needle-count)))
@@ -107,8 +110,13 @@
           (move-attachments machine cmd))
 
         (when (Rack? cmd)
-          (let ([racking (Rack-racking cmd)])
-            (set-MachineState-racking! machine racking)))))))
+          (let ([old (MachineState-racking machine)]
+                [new (Rack-racking cmd)])
+            (when (= old new)
+              (error 'fnitout "redundant Rack instruction"))
+            (unless (= 1 (abs (- old new)))
+              (error 'fnitout "Rack instruction can only change the racking by +/-1"))
+            (set-MachineState-racking! machine new)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -122,8 +130,8 @@
            1
            0)
        (if (eq? 'f bed)
-           (MachineState-racking machine)
-           0))))
+           0
+           (MachineState-racking machine)))))
 
 ;; check that all yarn carriers are at physical position corresponding to [n.x, dir]_r
 (: check-carrier-positions : MachineState Command -> Void)
@@ -139,7 +147,7 @@
             (error 'fnitout "yarn carrier ~a is not in action" y)
             (let ([actual (hash-ref positions y)])
               (unless (= expected actual)
-                (error 'fnitout "expected yarn carrier ~a at position ~a, but it is at ~a" y expected actual))))))))
+                (error 'fnitout "validating ~a:\nexpected yarn carrier ~a at position ~a, but it is at ~a" cmd y expected actual))))))))
 
 ;; check that source and target needles are aligned
 (: check-target : MachineState Command -> Void)

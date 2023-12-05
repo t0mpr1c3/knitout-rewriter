@@ -3,7 +3,7 @@
 ;; https://doi.org/10.1145/3592449
 
 (provide (contract-out
-          [fnitout-parse (-> string? syntax?)]))
+          [fnitout-parse (-> string? (listof cmd/c))]))
 
 (require brag/support
          racket/syntax
@@ -18,18 +18,17 @@
 ;; returns formal knitout AST
 ;; FIXME parse line number of instruction into comment for debugging
 (define (fnitout-parse str)
-  (let* ([fk-input-port (open-input-string (string-downcase str))]
-         [fk-token-thunk (tokenize fk-input-port)]
-         [fk-stx (parse fk-token-thunk)])
-    (parse-fnitout fk-stx)))
+  (let* ([f-input-port (open-input-string (string-downcase str))]
+         [f-token-thunk (tokenize f-input-port)]
+         [f-stx (parse f-token-thunk)])
+    (parse-fnitout f-stx)))
 
 ;; tower of macros to process AST
 
-(define (parse-fnitout fk-stx)
-  (syntax-parse fk-stx
+(define (parse-fnitout f-stx)
+  (syntax-parse f-stx
     [pattern-stx
-     (datum->syntax fk-stx
-                    (parse-pattern (syntax->list #'pattern-stx)))]))
+     (parse-pattern (syntax->list #'pattern-stx))]))
 
 (define (parse-pattern pattern-stx)
   (syntax-parse pattern-stx
@@ -44,6 +43,8 @@
     [(_)
      (void)]
     [(_ command-stx)
-     (parse-command #'command-stx)]))
+     (parse-command #'command-stx "")]
+    [(_ command-stx comment-stx)
+     (parse-command #'command-stx (cadr (syntax->datum #'comment-stx)))]))
 
 ;; end

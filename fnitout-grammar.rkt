@@ -4,7 +4,7 @@
 
 pattern: statement*
 
-statement: /SPACE* command? /SPACE* /SEMICOLON
+statement: /SPACE* command? /SPACE* comment? /NEWLINE
 
 command: TUCK /SPACE+ direction /SPACE+ needle /SPACE+ length /SPACE+ yarn
        | KNIT /SPACE+ direction /SPACE+ needle /SPACE+ length /SPACE+ yarn+
@@ -14,8 +14,10 @@ command: TUCK /SPACE+ direction /SPACE+ needle /SPACE+ length /SPACE+ yarn
        | OUT /SPACE+ direction /SPACE+ needle /SPACE+ carrier
        | DROP /SPACE+ needle
        | XFER /SPACE+ needle /SPACE+ needle
-       | RACK /SPACE+ plus-or-minus-one
+       | RACK /SPACE+ integer
        | NOP
+
+comment: COMMENT
 
 direction: DIR
 
@@ -29,12 +31,10 @@ yarn : /LPAREN /SPACE* carrier /SPACE* /COMMA /SPACE* length /SPACE* /RPAREN /SP
 
 ;; numeric
 
-plus-or-minus-one: (ONE|MINUS-ONE)
+positive-integer: COUNT
 
-positive-integer: (COUNT|ONE)
+integer: (INTEGER|COUNT)
 
-integer: (INTEGER|COUNT|ONE|MINUS-ONE)
-
-positive-float: (POSITIVE-FLOAT|COUNT|ONE)
+positive-float: (POSITIVE-FLOAT|COUNT)
 
 ;; end

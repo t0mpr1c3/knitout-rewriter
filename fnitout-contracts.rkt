@@ -16,9 +16,10 @@
          (struct-out Drop)
          (struct-out Xfer)
          (struct-out Rack)
+         (struct-out Nop)
          (contract-out
           [opposite-dir    (-> direction/c dir?)]
-          [parse-racking   (-> syntax? racking?)]
+          [parse-racking   (-> syntax? integer?)]
           [parse-direction (-> syntax? direction/c)]
           [parse-needle    (-> syntax? needle/c)]
           [parse-length    (-> syntax? length/c)]
@@ -32,7 +33,8 @@
          out/c
          drop/c
          xfer/c
-         rack/c)
+         rack/c
+         nop/c)
 
 (require racket/contract
          racket/syntax
@@ -57,9 +59,8 @@
   (struct/dc Direction
              [val dir?]))
 
-(define (opposite-dir self)
-  #s(Direction
-     (if (eq? '+ Direction-val self)) '- '+))
+(define (opposite-dir direction)
+  (if (eq? '+ (Direction-val direction)) '- '+))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -119,7 +120,7 @@
 
 ;; Tuck struct
 (struct Tuck
-  (direction needle length yarn)
+  (direction needle length yarn comment)
   #:prefab)
 
 (define tuck/c
@@ -127,13 +128,14 @@
              [direction direction/c]
              [needle needle/c]
              [length length/c]
-             [yarn yarn/c]))
+             [yarn yarn/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Knit struct
 (struct Knit
-  (direction needle length yarns)
+  (direction needle length yarns comment)
   #:prefab)
 
 (define knit/c
@@ -141,13 +143,14 @@
              [direction direction/c]
              [needle needle/c]
              [length length/c]
-             [yarns (listof yarn/c)]))
+             [yarns (listof yarn/c)]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Split struct
 (struct Split
-  (direction needle target length yarns)
+  (direction needle target length yarns comment)
   #:prefab)
 
 (define split/c
@@ -156,83 +159,98 @@
              [needle needle/c]
              [target needle/c]
              [length (or/c length/c #f)]
-             [yarns (listof yarn/c)]))
+             [yarns (listof yarn/c)]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Miss struct
 (struct Miss
-  (direction needle carrier)
+  (direction needle carrier comment)
   #:prefab)
 
 (define miss/c
   (struct/dc Miss
              [direction direction/c]
              [needle needle/c]
-             [carrier carrier/c]))
+             [carrier carrier/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; In struct
 (struct In
-  (direction needle carrier)
+  (direction needle carrier comment)
   #:prefab)
 
 (define in/c
   (struct/dc In
              [direction direction/c]
              [needle needle/c]
-             [carrier carrier/c]))
+             [carrier carrier/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Out struct
 (struct Out
-  (direction needle carrier)
+  (direction needle carrier comment)
   #:prefab)
 
 (define out/c
   (struct/dc Out
              [direction direction/c]
              [needle needle/c]
-             [carrier carrier/c]))
+             [carrier carrier/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Drop struct
 (struct Drop
-  (needle)
+  (needle comment)
   #:prefab)
 
 (define drop/c
   (struct/dc Drop
-             [needle needle/c]))
+             [needle needle/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Xfer struct
 (struct Xfer
-  (needle target)
+  (needle target comment)
   #:prefab)
 
 (define xfer/c
   (struct/dc Xfer
              [needle needle/c]
-             [target needle/c]))
+             [target needle/c]
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Rack struct
 (struct Rack
-  (racking)
+  (racking comment)
   #:prefab)
-
-(define racking?
-  (or/c (=/c 1) (=/c -1)))
 
 (define rack/c
   (struct/dc Rack
-             [racking racking?]))
+             [racking integer?]
+             [comment string?]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Nop struct
+(struct Nop
+  (comment)
+  #:prefab)
+
+(define nop/c
+  (struct/dc Nop
+             [comment string?]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

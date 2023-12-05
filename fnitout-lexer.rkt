@@ -12,7 +12,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-empty-tokens command-tokens (TUCK KNIT SPLIT MISS IN OUT DROP XFER RACK NOP))
-(define-empty-tokens punct-tokens (DOT COMMA SEMICOLON LPAREN RPAREN SPACE))
+(define-empty-tokens punct-tokens (DOT COMMA LPAREN RPAREN NEWLINE SPACE))
 
 ;; assumes all input has been cast to lower case
 (define (tokenize ip)
@@ -43,12 +43,8 @@
      ;; numeric
      [(:: (:? "+") (:+ numeric) "." (:* numeric))
       (token 'POSITIVE-FLOAT (string->number lexeme))]
-     ["1"
-      (token 'ONE 1)]
      [(:: (:/ "1" "9") (:* numeric))
       (token 'COUNT (string->number lexeme))]
-     ["-1"
-      (token 'MINUS-ONE -1)]
      [(:: (:? (:or "+" "-")) (:+ numeric))
       (token 'INTEGER (string->number lexeme))]
      ;; parameters
@@ -61,14 +57,17 @@
       (token-DOT)]
      [#\,
       (token-COMMA)]
-     [#\;
-      (token-SEMICOLON)]
      [#\(
       (token-LPAREN)]
      [#\)
       (token-RPAREN)]
+     [#\newline
+      (token-NEWLINE)]
      [whitespace
       (token-SPACE)]
+     ;; comment
+     [(from/stop-before #\; #\newline)
+      (token 'COMMENT lexeme)]
      ;; eof
      [(eof)
       (void)]))

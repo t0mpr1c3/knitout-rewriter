@@ -18,7 +18,8 @@
          (struct-out Out)
          (struct-out Drop)
          (struct-out Xfer)
-         (struct-out Rack))
+         (struct-out Rack)
+         (struct-out Nop))
 
 (define-type Dir
   (U '+
@@ -40,29 +41,39 @@
                [#:struct Tuck      ([direction : Direction]
                                     [needle : Needle]
                                     [length : Length]
-                                    [yarn : Yarn])]
+                                    [yarn : Yarn]
+                                    [comment : String])]
                [#:struct Knit      ([direction : Direction]
                                     [needle : Needle]
                                     [length : Length]
-                                    [yarns : (Listof Yarn)])]
+                                    [yarns : (Listof Yarn)]
+                                    [comment : String])]
                [#:struct Split     ([direction : Direction]
                                     [needle : Needle]
                                     [target : Needle]
                                     [length : (Option Length)]
-                                    [yarns : (Listof Yarn)])]
+                                    [yarns : (Listof Yarn)]
+                                    [comment : String])]
                [#:struct Miss      ([direction : Direction]
                                     [needle : Needle]
-                                    [carrier : Carrier])]
+                                    [carrier : Carrier]
+                                    [comment : String])]
                [#:struct In        ([direction : Direction]
                                     [needle : Needle]
-                                    [carrier : Carrier])]
+                                    [carrier : Carrier]
+                                    [comment : String])]
                [#:struct Out       ([direction : Direction]
                                     [needle : Needle]
-                                    [carrier : Carrier])]
-               [#:struct Drop      ([needle : Needle])]
+                                    [carrier : Carrier]
+                                    [comment : String])]
+               [#:struct Drop      ([needle : Needle]
+                                    [comment : String])]
                [#:struct Xfer      ([needle : Needle]
-                                    [target : Needle])]
-               [#:struct Rack      ([racking : Natural])])
+                                    [target : Needle]
+                                    [comment : String])]
+               [#:struct Rack      ([racking : Natural]
+                                    [comment : String])]
+               [#:struct Nop       ([comment : String])])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -77,7 +88,8 @@
      Out
      Drop
      Xfer
-     Rack))
+     Rack
+     Nop))
 
 ;; generic command accessors
 ;; FIXME better without all the conditional statements

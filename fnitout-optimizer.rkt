@@ -16,8 +16,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; inputs & outputs knitout AST
-(define (knitout-optimize k-stx)
-  (~> k-stx
+(define (knitout-optimize f-cmds)
+  (~> f-cmds
       merge-rack
       merge-miss
       squish
@@ -28,11 +28,11 @@
 
 ;; rewrite rule 2
 ;; opposite, consecutive `rack` commands cancel
-(define (merge-rack fk-stx)
-  (let loop1 ([cmds (syntax->datum fk-stx)]
+(define (merge-rack f-cmds)
+  (let loop1 ([cmds f-cmds]
               [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([cmd1 (car cmds)])
           (if (Rack? cmd1)
               (if (null? (cdr cmds))
@@ -56,11 +56,11 @@
 ;; when `miss` at needle N and carrier C in one direction
 ;; is followed by miss at needle N and carrier C in opposite direction,
 ;; both are eliminated
-(define (merge-miss fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (merge-miss f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Miss? head)
               (let ([next (second cmds)])
@@ -92,11 +92,11 @@
 
 ;; rewrite rule 3
 ;; eliminates the first of consecutive, opposite `xfer` commands
-(define (squish fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (squish f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Xfer? head)
               (let ([next (second cmds)])
@@ -126,11 +126,11 @@
 
 ;; rewrite rule 4
 ;; changes the needle location where `tuck` is performed
-(define (slide fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (slide f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Tuck? head)
               (let ([next (second cmds)])
