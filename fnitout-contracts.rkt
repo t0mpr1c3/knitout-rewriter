@@ -17,6 +17,7 @@
          (struct-out Xfer)
          (struct-out Rack)
          (contract-out
+          [opposite-dir    (-> direction/c dir?)]
           [parse-racking   (-> syntax? racking?)]
           [parse-direction (-> syntax? direction/c)]
           [parse-needle    (-> syntax? needle/c)]
@@ -56,6 +57,10 @@
   (struct/dc Direction
              [val dir?]))
 
+(define (opposite-dir self)
+  #s(Direction
+     (if (eq? '+ Direction-val self)) '- '+))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Needle struct
@@ -85,7 +90,7 @@
 
 (define carrier/c
   (struct/dc Carrier
-             [val (and/c positive? integer?)]))
+             [val (and/c positive? integer?)])) ;; FIXME set maximum for carrier index
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -107,7 +112,7 @@
 
 (define yarn/c
   (struct/dc Yarn
-             [carrier carrier/c] ;; FIXME set maximum for carrier index
+             [carrier carrier/c]
              [length length/c]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -142,15 +147,15 @@
 
 ;; Split struct
 (struct Split
-  (direction src-needle dst-needle length yarns)
+  (direction needle target length yarns)
   #:prefab)
 
 (define split/c
   (struct/dc Split
              [direction direction/c]
-             [src-needle needle/c]
-             [dst-needle needle/c]
-             [length length/c]
+             [needle needle/c]
+             [target needle/c]
+             [length (or/c length/c #f)]
              [yarns (listof yarn/c)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -207,13 +212,13 @@
 
 ;; Xfer struct
 (struct Xfer
-  (src-needle dst-needle)
+  (needle target)
   #:prefab)
 
 (define xfer/c
   (struct/dc Xfer
-             [src-needle needle/c]
-             [dst-needle needle/c]))
+             [needle needle/c]
+             [target needle/c]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

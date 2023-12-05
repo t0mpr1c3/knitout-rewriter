@@ -10,12 +10,13 @@
          syntax/parse)
 (require "fnitout-grammar.rkt"
          "fnitout-lexer.rkt"
-         "fnitout-commands.rkt")
+         "fnitout-parse-command.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; parse knitout from string
 ;; returns formal knitout AST
+;; FIXME parse line number of instruction into comment for debugging
 (define (fnitout-parse str)
   (let* ([fk-input-port (open-input-string (string-downcase str))]
          [fk-token-thunk (tokenize fk-input-port)]

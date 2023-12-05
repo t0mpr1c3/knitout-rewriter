@@ -2,7 +2,7 @@
 
 ;; https://doi.org/10.1145/3592449
 
-(provide (all-defined-out))
+(provide tokenize)
 
 (require brag/support
          br-parser-tools/lex

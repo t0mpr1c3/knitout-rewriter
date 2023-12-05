@@ -101,10 +101,10 @@
           (if (Xfer? head)
               (let ([next (second cmds)])
                 (if (Xfer? next) ;; both `xfer` commands
-                    (let ([head-src-needle (Xfer-src-needle head)]
-                          [next-src-needle (Xfer-src-needle next)]
-                          [head-dst-needle (Xfer-dst-needle head)]
-                          [next-dst-needle (Xfer-dst-needle next)])
+                    (let ([head-src-needle (Xfer-needle head)]
+                          [next-src-needle (Xfer-needle next)]
+                          [head-dst-needle (Xfer-target head)]
+                          [next-dst-needle (Xfer-target next)])
                       (if (and (equal? head-src-needle
                                        next-dst-needle)  ;; same needle
                                (equal? head-dst-needle
@@ -136,14 +136,14 @@
               (let ([next (second cmds)])
                 (if (Xfer? next) ;; `tuck` then `xfer`
                     (let ([head-needle     (Tuck-needle head)]
-                          [next-src-needle (Xfer-src-needle next)])
+                          [next-src-needle (Xfer-needle next)])
                       (if (equal? head-needle
                                   next-src-needle) ;; same needle
                           ;; change location of `tuck`
                           (loop (cddr cmds)
                                 (cons next
                                       (cons (struct-copy Tuck head
-                                                         [needle (Xfer-dst-needle next)])
+                                                         [needle (Xfer-target next)])
                                             acc)))
                           ;; next command
                           (loop (cdr cmds)

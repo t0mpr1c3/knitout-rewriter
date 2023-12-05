@@ -1,49 +1,189 @@
 #lang typed/racket
+;; FIXME convert to untyped after testing
 
 ;; https://doi.org/10.1145/3592449
 
-(require racket/syntax
-         syntax/parse
-         syntax/warn
-         threading)
+(require "fnitout-command.rkt"
+         "fnitout-machine.rkt")
+
 (require/typed "fnitout-parser.rkt"
                [fnitout-parse (String -> Any)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-#|
-Knitting machine state
+;; holds parsed script and machine configuration
+(struct Validater
+  ([script : (Listof Command)] ;; parsed script
+   [needle-count : Positive-Integer]  ;; number of needles in each bed
+   [carrier-count : Positive-Integer] ;; number of yarn carriers
+   [machine : MachineState]) ;; knitting machine state (mutable)
+  #:transparent)
 
-S = (r, L ,Y ,A) consists of:
-
-• r ∈ Z, the racking offset, or the offset of the needles on the
-back bed relative to the front bed. At offset r , back needle
-b.x - r is across from front needle f.x.
-
-• L ∈ nLoc → N, a partial function with default value 0 that
-reports the number of loops on each needle.
-
-• Y ∈ N → Z, a partial function that gives the current physical
-position of the yarn carriers. If the value is ⊥ (the default
-value), then we say that the carrier is inactive.
-
-• A ∈ N → ycLoc a partial function that gives the logical
-carrier location of where each yarn carrier is attached to a
-loop. An inactive carrier (with value ⊥) is not attached.
-
-We define the empty state as S∅ = (0, [], [], []).
-|#
-(struct MachineState
-  ([rack : Integer] ;; racking offset
-   [loops : (Listof Integer)] ;; bed.index -> loop count
-   [carriers : (Listof Positive-Integer)] ;; physical yarn carrier positions (needle, direction)
-   [attachments : (Listof Integer)])) ;; logical last-loop positions
+;; constructor
+(: make-Validater : Positive-Integer Positive-Integer String -> Validater)
+(define (make-Validater needle-count carrier-count str)
+  (Validater
+   (cast (fnitout-parse str) (Listof Command)) ;; FIXME ideally this would be a Syntax object, retaining line numbers of original Knitout script
+   needle-count  ;; FIXME use to create contract on Needle
+   carrier-count ;; FIXME use to create contract on Carrier
+   (make-MachineState needle-count)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; validate formal knitout AST
-(: fnitout-validate : Any -> Boolean)
-(define (fnitout-validate fk-stx)
-  #t)
+;; FIXME accumulate and report all validation errors
+;;       instead of halting validation on first error
+(: validate : Validater -> Void)
+(define (validate self)
+  (let ([machine (Validater-machine self)])
+    (for ([cmd (in-list (Validater-script self))])
+      (begin
+
+        (when (Tuck? cmd)
+          (check-carrier-positions machine cmd)
+          (let ([needle (Tuck-needle cmd)])
+            ;; increment loop count
+            (set-loops! machine needle (add1 (get-loops machine needle))))
+          (set-attachments machine cmd)
+          (set-carrier-positions machine cmd))
+
+        (when (Knit? cmd)
+          (check-carrier-positions machine cmd)
+          (let ([needle (Knit-needle cmd)]
+                [yarns  (Knit-yarns cmd)])
+            ;; set loop count
+            (set-loops! machine needle (length yarns)))
+          (set-attachments machine cmd)
+          (set-carrier-positions machine cmd))
+
+        (when (Split? cmd)
+          (check-target machine cmd)
+          (check-carrier-positions machine cmd)
+          (let ([needle (Split-needle cmd)]
+                [target (Split-target cmd)]
+                [yarns  (Split-yarns cmd)])
+            ;; move loop count
+            (set-loops! machine target (+ (get-loops machine target)
+                                          (get-loops machine needle)))
+            ;; track newly created loops
+            (set-loops! machine needle (length yarns)))
+          (move-attachments machine cmd)
+          (set-attachments machine cmd)
+          (set-carrier-positions machine cmd))
+
+        (when (Drop? cmd)
+          (let ([needle (Drop-needle cmd)])
+            (if (zero? (get-loops machine needle))
+                (error 'fnitout "needle has no loops to drop")
+                (set-loops! machine needle 0))))
+
+        (when (Miss? cmd)
+          (check-carrier-positions machine cmd)
+          (set-carrier-positions machine cmd))
+
+        (when (In? cmd)
+          (let ([carrier-positions (MachineState-carrier-positions machine)]
+                [c                 (Carrier-val (In-carrier cmd))])
+            (when (hash-has-key? carrier-positions c)
+              (error 'fnitout "yarn carrier is already in")))
+          (set-carrier-positions machine cmd))
+
+        (when (Out? cmd)
+          (check-carrier-positions machine cmd)
+          (let ([carrier-positions (MachineState-carrier-positions machine)]
+                [attachments       (MachineState-attachments       machine)]
+                [c                 (Carrier-val (Out-carrier cmd))])
+            (hash-remove! carrier-positions c)
+            (hash-remove! attachments       c)))
+
+        (when (Xfer? cmd)
+          (check-target machine cmd)
+          (let ([needle (Xfer-needle cmd)]
+                [target (Xfer-target cmd)])
+            ;; move loop count
+            (set-loops! machine target (+ (get-loops machine target)
+                                          (get-loops machine needle)))
+            (set-loops! machine needle 0))
+          (move-attachments machine cmd))
+
+        (when (Rack? cmd)
+          (let ([racking (Rack-racking cmd)])
+            (set-MachineState-racking! machine racking)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; returns physical position of yarn carrier
+(: carrier-physical-position (->* (MachineState Needle) (Dir) Integer))
+(define (carrier-physical-position machine needle [dir '-])
+  (let ([bed (Needle-bed needle)]
+        [idx (Needle-index needle)])
+    (+ idx
+       (if (eq? '+ dir)
+           1
+           0)
+       (if (eq? 'f bed)
+           (MachineState-racking machine)
+           0))))
+
+;; check that all yarn carriers are at physical position corresponding to [n.x, dir]_r
+(: check-carrier-positions : MachineState Command -> Void)
+(define (check-carrier-positions machine cmd)
+  (let* ([direction (command-opposite-dir cmd)] ;; NB command `Out` is a special case
+         [needle    (command-needle cmd)]
+         [carriers  (command-carriers cmd)]
+         [expected  (carrier-physical-position machine needle direction)]
+         [positions (MachineState-carrier-positions machine)])
+    (for ([c (in-list carriers)])
+      (let ([y (Carrier-val c)])
+        (if (not (hash-has-key? positions y))
+            (error 'fnitout "yarn carrier ~a is not in action" y)
+            (let ([actual (hash-ref positions y)])
+              (unless (= expected actual)
+                (error 'fnitout "expected yarn carrier ~a at position ~a, but it is at ~a" y expected actual))))))))
+
+;; check that source and target needles are aligned
+(: check-target : MachineState Command -> Void)
+(define (check-target machine cmd)
+  (let* ([needle (command-needle cmd)]
+         [target (command-target cmd)])
+    (when (eq? (Needle-bed needle)
+               (Needle-bed target))
+      (error 'fnitout "needle and target are on same bed"))
+    (unless (= (carrier-physical-position machine needle)
+               (carrier-physical-position machine target))
+      (error 'fnitout "needle and target are not aligned"))))
+
+;; move all attached loops from source needle to target
+(: move-attachments : MachineState Command -> Void)
+(define (move-attachments machine cmd)
+  (let ([attachments (MachineState-attachments machine)]
+        [needle (command-needle cmd)]
+        [target (command-target cmd)])
+    (for ([y (in-hash-keys attachments)])
+      (when (equal? needle
+                    (hash-ref attachments y))
+        (hash-set! attachments y target)))))
+
+;; set attachments at needle specified by instruction
+;; NB. JL also sets direction of attachment
+(: set-attachments : MachineState Command -> Void)
+(define (set-attachments machine cmd)
+  (let* ([attachments (MachineState-attachments machine)]
+         [needle (command-needle cmd)]
+         [carriers (command-carriers cmd)]
+         [yarns (map Carrier-val carriers)])
+    (for ([y (in-list yarns)])
+      (hash-set! attachments y needle))))
+
+;; set physical position of yarn carriers
+(: set-carrier-positions : MachineState Command -> Void)
+(define (set-carrier-positions machine cmd)
+  (let* ([carrier-positions (MachineState-carrier-positions machine)]
+         [dir (command-dir cmd)]
+         [needle (command-needle cmd)]
+         [carriers (command-carriers cmd)]
+         [yarns (map Carrier-val carriers)])
+    (for ([y (in-list yarns)])
+      (hash-set! carrier-positions y (carrier-physical-position machine needle dir)))))
 
 ;; end
