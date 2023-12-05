@@ -2,8 +2,9 @@
 
 ;; https://doi.org/10.1145/3592449
 
-(provide (contract-out
-          [parse-command (-> syntax? cmd/c)]))
+(provide cmd/c
+         (contract-out
+          [parse-command (-> syntax? string? cmd/c)]))
 
 (require racket/syntax
          syntax/parse
@@ -15,60 +16,71 @@
 ;; contract for command
 
 (define cmd/c
-  (or/c tuck/c
-        knit/c
-        split/c
-        miss/c
-        in/c
-        out/c
-        drop/c
-        xfer/c
+  (or/c op/c
+        opn/c
+        opnt/c
+        opndc/c
+        opndl/c
+        opndly/c
         rack/c
+        tuck/c
+        split/c
         void?))
         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; parse command
 
-(define (parse-command command-stx)
+(define (parse-command command-stx comment)
   (syntax-parse command-stx
     [(_ {~literal TUCK} dir-stx needle-stx length-stx yarn-stx)
-     (Tuck (parse-direction #'dir-stx)
+     (Tuck comment
            (parse-needle #'needle-stx)
+           (parse-direction #'dir-stx)
            (parse-length #'length-stx)
            (parse-yarn #'yarn-stx))]
     [(_ {~literal KNIT} dir-stx needle-stx length-stx yarn-stxs ...)
-     (Knit (parse-direction #'dir-stx)
+     (Knit comment
            (parse-needle #'needle-stx)
+           (parse-direction #'dir-stx)
            (parse-length #'length-stx)
            (parse-yarns #'(yarn-stxs ...)))]
     [(_ {~literal SPLIT} dir-stx src-needle-stx dst-needle-stx length-stx yarn-stxs ...)
-     (Split (parse-direction #'dir-stx)
+     (Split comment
             (parse-needle #'src-needle-stx)
-            (parse-needle #'dst-needle-stx)
+            (parse-direction #'dir-stx)
             (parse-length #'length-stx)
-            (parse-yarns #'(yarn-stxs ...)))]
+            (parse-yarns #'(yarn-stxs ...))
+            (parse-needle #'dst-needle-stx))]
     [(_ {~literal MISS} dir-stx needle-stx carrier-stx)
-     (Miss (parse-direction #'dir-stx)
+     (Miss comment
            (parse-needle #'needle-stx)
+           (parse-direction #'dir-stx)
            (parse-carrier #'carrier-stx))]
     [(_ {~literal IN} dir-stx needle-stx carrier-stx)
-     (In (parse-direction #'dir-stx)
-         (parse-needle #'needle-stx)
-         (parse-carrier #'carrier-stx))]
+     (In  comment
+           (parse-needle #'needle-stx)
+           (parse-direction #'dir-stx)
+           (parse-carrier #'carrier-stx))]
     [(_ {~literal OUT} dir-stx needle-stx carrier-stx)
-     (Out (parse-direction #'dir-stx)
-          (parse-needle #'needle-stx)
-          (parse-carrier #'carrier-stx))]
+     (Out  comment
+           (parse-needle #'needle-stx)
+           (parse-direction #'dir-stx)
+           (parse-carrier #'carrier-stx))]
     [(_ {~literal DROP} needle-stx)
-     (Drop (parse-needle #'needle-stx))]
-    [(_ {~literal XFER} src-needle-stx dst-needle-stx)
-     (Xfer (parse-needle #'src-needle-stx)
-           (parse-needle #'dst-needle-stx))]
+     (Drop comment
+           (parse-needle #'needle-stx))]
+    [(_ {~literal XFER} needle-stx target-stx)
+     (Xfer comment
+           (parse-needle #'needle-stx)
+           (parse-needle #'target-stx))]
     [(_ {~literal RACK} racking-stx)
-     (Rack (parse-racking #'racking-stx))]
+     (Rack comment
+           (parse-racking #'racking-stx))]
     [(_ {~literal NOP})
-     (void)]))
+     (Nop comment)]
+    [({~literal comment} comment-stx)
+     (Nop (syntax->datum #'comment-stx))]))
 
 ;; sort yarns by carrier
 (define (parse-yarns yarns-stx)

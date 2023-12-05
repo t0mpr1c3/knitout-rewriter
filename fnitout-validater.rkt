@@ -3,11 +3,13 @@
 
 ;; https://doi.org/10.1145/3592449
 
+(provide (all-defined-out))
+
 (require "fnitout-command.rkt"
          "fnitout-machine.rkt")
 
 (require/typed "fnitout-parser.rkt"
-               [fnitout-parse (String -> Any)])
+               [fnitout-parse (String -> (Listof Command))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -23,7 +25,7 @@
 (: make-Validater : Positive-Integer Positive-Integer String -> Validater)
 (define (make-Validater needle-count carrier-count str)
   (Validater
-   (cast (fnitout-parse str) (Listof Command)) ;; FIXME ideally this would be a Syntax object, retaining line numbers of original Knitout script
+   (fnitout-parse str)
    needle-count  ;; FIXME use to create contract on Needle
    carrier-count ;; FIXME use to create contract on Carrier
    (make-MachineState needle-count)))
@@ -41,7 +43,7 @@
 
         (when (Tuck? cmd)
           (check-carrier-positions machine cmd)
-          (let ([needle (Tuck-needle cmd)])
+          (let ([needle (OpN-needle cmd)])
             ;; increment loop count
             (set-loops! machine needle (add1 (get-loops machine needle))))
           (set-attachments machine cmd)
@@ -49,8 +51,8 @@
 
         (when (Knit? cmd)
           (check-carrier-positions machine cmd)
-          (let ([needle (Knit-needle cmd)]
-                [yarns  (Knit-yarns cmd)])
+          (let ([needle (OpN-needle cmd)]
+                [yarns  (OpNDLY-yarns cmd)])
             ;; set loop count
             (set-loops! machine needle (length yarns)))
           (set-attachments machine cmd)
@@ -59,9 +61,9 @@
         (when (Split? cmd)
           (check-target machine cmd)
           (check-carrier-positions machine cmd)
-          (let ([needle (Split-needle cmd)]
+          (let ([needle (OpN-needle cmd)]
                 [target (Split-target cmd)]
-                [yarns  (Split-yarns cmd)])
+                [yarns  (OpNDLY-yarns cmd)])
             ;; move loop count
             (set-loops! machine target (+ (get-loops machine target)
                                           (get-loops machine needle)))
@@ -72,9 +74,9 @@
           (set-carrier-positions machine cmd))
 
         (when (Drop? cmd)
-          (let ([needle (Drop-needle cmd)])
+          (let ([needle (OpN-needle cmd)])
             (if (zero? (get-loops machine needle))
-                (error 'fnitout "needle has no loops to drop")
+                (error 'fnitout "validating ~a:\nneedle has no loops to drop" cmd)
                 (set-loops! machine needle 0))))
 
         (when (Miss? cmd)
@@ -83,23 +85,23 @@
 
         (when (In? cmd)
           (let ([carrier-positions (MachineState-carrier-positions machine)]
-                [c                 (Carrier-val (In-carrier cmd))])
+                [c                 (Carrier-val (OpNDC-carrier cmd))])
             (when (hash-has-key? carrier-positions c)
-              (error 'fnitout "yarn carrier is already in")))
+              (error 'fnitout "validating ~a:\nyarn carrier is already in" cmd)))
           (set-carrier-positions machine cmd))
 
         (when (Out? cmd)
           (check-carrier-positions machine cmd)
           (let ([carrier-positions (MachineState-carrier-positions machine)]
                 [attachments       (MachineState-attachments       machine)]
-                [c                 (Carrier-val (Out-carrier cmd))])
+                [c                 (Carrier-val (OpNDC-carrier cmd))])
             (hash-remove! carrier-positions c)
             (hash-remove! attachments       c)))
 
         (when (Xfer? cmd)
           (check-target machine cmd)
-          (let ([needle (Xfer-needle cmd)]
-                [target (Xfer-target cmd)])
+          (let ([needle (OpN-needle cmd)]
+                [target (OpNT-target cmd)])
             ;; move loop count
             (set-loops! machine target (+ (get-loops machine target)
                                           (get-loops machine needle)))
@@ -107,8 +109,13 @@
           (move-attachments machine cmd))
 
         (when (Rack? cmd)
-          (let ([racking (Rack-racking cmd)])
-            (set-MachineState-racking! machine racking)))))))
+          (let ([old (MachineState-racking machine)]
+                [new (Rack-racking cmd)])
+            (when (= old new)
+              (error 'fnitout "validating ~a:\nredundant Rack instruction" cmd))
+            (unless (= 1 (abs (- old new)))
+              (error 'fnitout "validating ~a:\nRack instruction can only change the racking by +/-1" cmd))
+            (set-MachineState-racking! machine new)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -122,8 +129,8 @@
            1
            0)
        (if (eq? 'f bed)
-           (MachineState-racking machine)
-           0))))
+           0
+           (MachineState-racking machine)))))
 
 ;; check that all yarn carriers are at physical position corresponding to [n.x, dir]_r
 (: check-carrier-positions : MachineState Command -> Void)
@@ -136,10 +143,10 @@
     (for ([c (in-list carriers)])
       (let ([y (Carrier-val c)])
         (if (not (hash-has-key? positions y))
-            (error 'fnitout "yarn carrier ~a is not in action" y)
+            (error 'fnitout "validating ~a:\nyarn carrier ~a is not in action" cmd y)
             (let ([actual (hash-ref positions y)])
               (unless (= expected actual)
-                (error 'fnitout "expected yarn carrier ~a at position ~a, but it is at ~a" y expected actual))))))))
+                (error 'fnitout "validating ~a:\nexpected yarn carrier ~a at position ~a, but it is at ~a" cmd y expected actual))))))))
 
 ;; check that source and target needles are aligned
 (: check-target : MachineState Command -> Void)
@@ -148,10 +155,10 @@
          [target (command-target cmd)])
     (when (eq? (Needle-bed needle)
                (Needle-bed target))
-      (error 'fnitout "needle and target are on same bed"))
+      (error 'fnitout "validating ~a:\nneedle and target are on same bed" cmd))
     (unless (= (carrier-physical-position machine needle)
                (carrier-physical-position machine target))
-      (error 'fnitout "needle and target are not aligned"))))
+      (error 'fnitout "validating ~a:\nneedle and target are not aligned" cmd))))
 
 ;; move all attached loops from source needle to target
 (: move-attachments : MachineState Command -> Void)

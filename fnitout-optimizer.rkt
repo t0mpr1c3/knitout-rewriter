@@ -16,8 +16,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; inputs & outputs knitout AST
-(define (knitout-optimize k-stx)
-  (~> k-stx
+(define (knitout-optimize f-cmds)
+  (~> f-cmds
       merge-rack
       merge-miss
       squish
@@ -28,11 +28,11 @@
 
 ;; rewrite rule 2
 ;; opposite, consecutive `rack` commands cancel
-(define (merge-rack fk-stx)
-  (let loop1 ([cmds (syntax->datum fk-stx)]
+(define (merge-rack f-cmds)
+  (let loop1 ([cmds f-cmds]
               [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([cmd1 (car cmds)])
           (if (Rack? cmd1)
               (if (null? (cdr cmds))
@@ -56,21 +56,21 @@
 ;; when `miss` at needle N and carrier C in one direction
 ;; is followed by miss at needle N and carrier C in opposite direction,
 ;; both are eliminated
-(define (merge-miss fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (merge-miss f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Miss? head)
               (let ([next (second cmds)])
                 (if (Miss? next) ;; both `miss` commands
-                    (let ([head-dir (Miss-direction head)]
-                          [next-dir (Miss-direction next)]
-                          [head-needle (Miss-needle head)]
-                          [next-needle (Miss-needle next)]
-                          [head-carrier (Miss-carrier head)]
-                          [next-carrier (Miss-carrier next)])
+                    (let ([head-dir (OpND-direction head)]
+                          [next-dir (OpND-direction next)]
+                          [head-needle (OpN-needle head)]
+                          [next-needle (OpN-needle next)]
+                          [head-carrier (OpNDC-carrier head)]
+                          [next-carrier (OpNDC-carrier next)])
                       (if (and (equal? head-needle
                                        next-needle)     ;; same needle
                                (equal? head-carrier
@@ -92,19 +92,19 @@
 
 ;; rewrite rule 3
 ;; eliminates the first of consecutive, opposite `xfer` commands
-(define (squish fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (squish f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Xfer? head)
               (let ([next (second cmds)])
                 (if (Xfer? next) ;; both `xfer` commands
-                    (let ([head-src-needle (Xfer-needle head)]
-                          [next-src-needle (Xfer-needle next)]
-                          [head-dst-needle (Xfer-target head)]
-                          [next-dst-needle (Xfer-target next)])
+                    (let ([head-src-needle (OpN-needle head)]
+                          [next-src-needle (OpN-needle next)]
+                          [head-dst-needle (OpNT-target head)]
+                          [next-dst-needle (OpNT-target next)])
                       (if (and (equal? head-src-needle
                                        next-dst-needle)  ;; same needle
                                (equal? head-dst-needle
@@ -126,24 +126,28 @@
 
 ;; rewrite rule 4
 ;; changes the needle location where `tuck` is performed
-(define (slide fk-stx)
-  (let loop ([cmds (syntax->datum fk-stx)]
+(define (slide f-cmds)
+  (let loop ([cmds f-cmds]
              [acc null])
     (if (null? cmds)
-        (datum->syntax fk-stx (reverse acc))
+        (reverse acc)
         (let ([head (first cmds)])
           (if (Tuck? head)
               (let ([next (second cmds)])
                 (if (Xfer? next) ;; `tuck` then `xfer`
-                    (let ([head-needle     (Tuck-needle head)]
-                          [next-src-needle (Xfer-needle next)])
+                    (let ([head-needle     (OpN-needle head)]
+                          [next-src-needle (OpN-needle next)])
                       (if (equal? head-needle
                                   next-src-needle) ;; same needle
                           ;; change location of `tuck`
                           (loop (cddr cmds)
                                 (cons next
-                                      (cons (struct-copy Tuck head
-                                                         [needle (Xfer-target next)])
+                                      (cons (Tuck
+                                             (Op-comment head)
+                                             (OpNT-target next)
+                                             (OpND-direction head)
+                                             (OpNDL-length head)
+                                             (Tuck-yarn head))
                                             acc)))
                           ;; next command
                           (loop (cdr cmds)

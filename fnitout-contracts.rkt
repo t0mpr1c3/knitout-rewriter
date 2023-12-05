@@ -8,6 +8,14 @@
          (struct-out Length)
          (struct-out Yarn)
          (struct-out Tuck)
+         (struct-out Op)
+         (struct-out OpN)
+         (struct-out OpNT)
+         (struct-out OpND)
+         (struct-out OpNDC)
+         (struct-out OpNDL)
+         (struct-out OpNDLY)
+         (struct-out Tuck)
          (struct-out Knit)
          (struct-out Split)
          (struct-out Miss)
@@ -16,23 +24,25 @@
          (struct-out Drop)
          (struct-out Xfer)
          (struct-out Rack)
+         (struct-out Nop)
          (contract-out
           [opposite-dir    (-> direction/c dir?)]
-          [parse-racking   (-> syntax? racking?)]
+          [parse-racking   (-> syntax? integer?)]
           [parse-direction (-> syntax? direction/c)]
           [parse-needle    (-> syntax? needle/c)]
           [parse-length    (-> syntax? length/c)]
           [parse-carrier   (-> syntax? carrier/c)]
           [parse-yarn      (-> syntax? yarn/c)])
+         op/c
+         opn/c
+         opnt/c
+         opnd/c
+         opndc/c
+         opndl/c
+         opndly/c
+         rack/c
          tuck/c
-         knit/c
-         split/c
-         miss/c
-         in/c
-         out/c
-         drop/c
-         xfer/c
-         rack/c)
+         split/c)
 
 (require racket/contract
          racket/syntax
@@ -57,9 +67,8 @@
   (struct/dc Direction
              [val dir?]))
 
-(define (opposite-dir self)
-  #s(Direction
-     (if (eq? '+ Direction-val self)) '- '+))
+(define (opposite-dir direction)
+  (if (eq? '+ (Direction-val direction)) '- '+))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -117,122 +126,152 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Tuck struct
-(struct Tuck
-  (direction needle length yarn)
+;; Base command types
+
+(struct Op
+  (comment)
   #:prefab)
 
-(define tuck/c
-  (struct/dc Tuck
-             [direction direction/c]
-             [needle needle/c]
-             [length length/c]
-             [yarn yarn/c]))
+(define op/c
+  (struct/dc Op
+             [comment string?]))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Knit struct
-(struct Knit
-  (direction needle length yarns)
+(struct OpN Op
+  (needle)
   #:prefab)
 
-(define knit/c
-  (struct/dc Knit
-             [direction direction/c]
-             [needle needle/c]
-             [length length/c]
+(define opn/c
+  (struct/dc OpN
+             [(comment #:parent Op) string?]             
+             [needle needle/c]))
+
+(struct OpNT OpN
+  (target)
+  #:prefab)
+
+(define opnt/c
+  (struct/dc OpNT
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c]             
+             [target needle/c]))
+
+(struct OpND OpN
+  (direction)
+  #:prefab)
+
+(define opnd/c
+  (struct/dc OpND
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [direction direction/c]))
+
+(struct OpNDC OpND
+  (carrier)
+  #:prefab)
+
+(define opndc/c
+  (struct/dc OpNDC
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [(direction #:parent OpND) direction/c]
+             [carrier carrier/c]))
+
+(struct OpNDL OpND
+  (length)
+  #:prefab)
+
+(define opndl/c
+  (struct/dc OpNDL
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [(direction #:parent OpND) direction/c]
+             [length length/c]))
+
+(struct OpNDLY OpNDL
+  (yarns)
+  #:prefab)
+
+(define opndly/c
+  (struct/dc OpNDLY
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [(direction #:parent OpND) direction/c]
+             [(length #:parent OpNDL) length/c]
              [yarns (listof yarn/c)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Nop struct
+(struct Nop Op
+  ()
+  #:prefab)
+
+;; Rack struct
+(struct Rack Op
+  (racking)
+  #:prefab)
+
+(define rack/c
+  (struct/dc Rack             
+             [(comment #:parent Op) string?]
+             [racking integer?]))
+
+;; Drop struct
+(struct Drop OpN
+  ()
+  #:prefab)
+
+;; Xfer struct
+(struct Xfer OpNT
+  ()
+  #:prefab)
+
+;; Miss struct
+(struct Miss OpNDC
+  ()
+  #:prefab)
+
+;; In struct
+(struct In OpNDC
+  ()
+  #:prefab)
+
+;; Out struct
+(struct Out OpNDC
+  ()
+  #:prefab)
+
+;; Knit struct
+(struct Knit OpNDLY
+  ()
+  #:prefab)
+
 ;; Split struct
-(struct Split
-  (direction needle target length yarns)
+(struct Split OpNDLY
+  (target)
   #:prefab)
 
 (define split/c
   (struct/dc Split
-             [direction direction/c]
-             [needle needle/c]
-             [target needle/c]
-             [length (or/c length/c #f)]
-             [yarns (listof yarn/c)]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Miss struct
-(struct Miss
-  (direction needle carrier)
-  #:prefab)
-
-(define miss/c
-  (struct/dc Miss
-             [direction direction/c]
-             [needle needle/c]
-             [carrier carrier/c]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; In struct
-(struct In
-  (direction needle carrier)
-  #:prefab)
-
-(define in/c
-  (struct/dc In
-             [direction direction/c]
-             [needle needle/c]
-             [carrier carrier/c]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Out struct
-(struct Out
-  (direction needle carrier)
-  #:prefab)
-
-(define out/c
-  (struct/dc Out
-             [direction direction/c]
-             [needle needle/c]
-             [carrier carrier/c]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Drop struct
-(struct Drop
-  (needle)
-  #:prefab)
-
-(define drop/c
-  (struct/dc Drop
-             [needle needle/c]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Xfer struct
-(struct Xfer
-  (needle target)
-  #:prefab)
-
-(define xfer/c
-  (struct/dc Xfer
-             [needle needle/c]
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [(direction #:parent OpND) direction/c]
+             [(length #:parent OpNDL) length/c]
+             [(yarns #:parent OpNDLY) (listof yarn/c)]
              [target needle/c]))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Rack struct
-(struct Rack
-  (racking)
+;; Tuck struct
+(struct Tuck OpNDL
+  (yarn)
   #:prefab)
 
-(define racking?
-  (or/c (=/c 1) (=/c -1)))
-
-(define rack/c
-  (struct/dc Rack
-             [racking racking?]))
+(define tuck/c
+  (struct/dc Tuck
+             [(comment #:parent Op) string?]             
+             [(needle #:parent OpN) needle/c] 
+             [(direction #:parent OpND) direction/c]
+             [(length #:parent OpNDL) length/c]
+             [yarn yarn/c]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
