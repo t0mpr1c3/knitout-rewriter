@@ -17,7 +17,7 @@
 ;; divide misses into single-needle steps
 ;; divide racking into single-needle steps
 
-;; parse fnitout from string
+;; parse knitout into fnitout
 ;; returns AST
 (define (fnitout str)
   (let* ([k-stx (knitout-parse str)] 
@@ -39,7 +39,7 @@
                   (when (> v 2)
                     (displayln (format "Warning: Knitout is version ~a, but this code only knows about versions up to 2." v)))
                   #t))))
-    (error 'knitout "invalid Knitout magic number string")))
+    (error 'fnitout "invalid Knitout magic number string")))
 
 (define (knitout-headers k-ast)
   (let ([headers (make-hasheq)])

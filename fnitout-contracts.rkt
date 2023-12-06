@@ -120,7 +120,7 @@
 
 ;; Tuck struct
 (struct Tuck
-  (direction needle length yarn comment)
+  (direction needle length yarn comment error)
   #:prefab)
 
 (define tuck/c
@@ -129,13 +129,14 @@
              [needle needle/c]
              [length length/c]
              [yarn yarn/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Knit struct
 (struct Knit
-  (direction needle length yarns comment)
+  (direction needle length yarns comment error)
   #:prefab)
 
 (define knit/c
@@ -144,13 +145,14 @@
              [needle needle/c]
              [length length/c]
              [yarns (listof yarn/c)]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Split struct
 (struct Split
-  (direction needle target length yarns comment)
+  (direction needle target length yarns comment error)
   #:prefab)
 
 (define split/c
@@ -160,13 +162,14 @@
              [target needle/c]
              [length (or/c length/c #f)]
              [yarns (listof yarn/c)]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Miss struct
 (struct Miss
-  (direction needle carrier comment)
+  (direction needle carrier comment error)
   #:prefab)
 
 (define miss/c
@@ -174,13 +177,14 @@
              [direction direction/c]
              [needle needle/c]
              [carrier carrier/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; In struct
 (struct In
-  (direction needle carrier comment)
+  (direction needle carrier comment error)
   #:prefab)
 
 (define in/c
@@ -188,13 +192,14 @@
              [direction direction/c]
              [needle needle/c]
              [carrier carrier/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Out struct
 (struct Out
-  (direction needle carrier comment)
+  (direction needle carrier comment error)
   #:prefab)
 
 (define out/c
@@ -202,55 +207,60 @@
              [direction direction/c]
              [needle needle/c]
              [carrier carrier/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Drop struct
 (struct Drop
-  (needle comment)
+  (needle comment error)
   #:prefab)
 
 (define drop/c
   (struct/dc Drop
              [needle needle/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Xfer struct
 (struct Xfer
-  (needle target comment)
+  (needle target comment error)
   #:prefab)
 
 (define xfer/c
   (struct/dc Xfer
              [needle needle/c]
              [target needle/c]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Rack struct
 (struct Rack
-  (racking comment)
+  (racking comment error)
   #:prefab)
 
 (define rack/c
   (struct/dc Rack
              [racking integer?]
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Nop struct
 (struct Nop
-  (comment)
+  (comment error)
   #:prefab)
 
 (define nop/c
   (struct/dc Nop
-             [comment string?]))
+             [comment string?]
+             [error (listof string?)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

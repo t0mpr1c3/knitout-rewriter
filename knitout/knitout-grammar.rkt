@@ -1,12 +1,22 @@
 #lang brag
 
-;; https://textiles-lab.github.io/knitout/knitout.html
+;; https://textiles-lab.github.io/knitout/knitout.html#lang brag
 
-pattern: line*
+;; https://doi.org/10.1145/3592449
 
-line: /SPACE* command? /SPACE* comment? /NEWLINE
+knitout: magic-number script
 
-comment: COMMENT
+magic-number: VERSION /NEWLINE
+
+script: header* pattern
+
+header: HEADER /NEWLINE
+
+pattern: statement*
+
+statement: /SPACE* command? /SPACE* comment? /NEWLINE
+
+comment: (HEADER|COMMENT)
 
 command: IN /SPACE+ carriers
        | INHOOK /SPACE+ carriers
@@ -30,7 +40,6 @@ needle: BED (INTEGER|COUNT)
 
 size: (FLOAT|INTEGER|COUNT)
 
-;; carriers must be integers > 0, not arbitrary strings as in Knitout spec
-carriers: COUNT (/SPACE+ COUNT)*
+carriers: (COUNT|CARRIER) (/SPACE+ (COUNT|CARRIER))*
 
 ;; end

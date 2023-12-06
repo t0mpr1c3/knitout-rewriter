@@ -13,10 +13,10 @@
 (define-empty-tokens punct-tokens (COMMA LPAREN RPAREN NEWLINE SPACE))
 
 ;; assumes all input has been cast to lower case
-(define (tokenize ip)
+(define (tokenize-knitout ip)
   (port-count-lines! ip)
   (define my-lexer
-    (lexer
+    (lexer-src-pos
      ;; commands
      ["in"
       (token-IN)]
@@ -49,10 +49,10 @@
      ["pause"
       (token-PAUSE)]
      ;; parameters
-     [(:: (:? (:or "+" "-")) (:+ numeric) "." (:* numeric))
-      (token 'FLOAT (string->number lexeme))]
      [(:: (:/ "1" "9") (:* numeric))
       (token 'COUNT (string->number lexeme))]
+     [(:: (:? (:or "+" "-")) (:+ numeric) "." (:* numeric))
+      (token 'FLOAT (string->number lexeme))]
      [(:: (:? (:or "+" "-")) (:+ numeric))
       (token 'INTEGER (string->number lexeme))]
      [(:or "+" "-")
@@ -70,9 +70,15 @@
       (token-NEWLINE)]
      [whitespace
       (token-SPACE)]
-     ;; comment
-     [(from/stop-before #\; #\newline)
-      (token 'COMMENT lexeme)]
+     ;; headers and comments
+     [(:: ";!knitout-" (:* numeric))
+      (token 'VERSION (string->number (trim-ends ";!knitout-" lexeme "")))]
+     [(from/stop-before ";;" "\n")
+      (token 'HEADER (trim-ends ";;" lexeme ""))]
+     [(from/stop-before ";" "\n")
+      (token 'COMMENT (trim-ends ";" lexeme ""))]
+     [(from/stop-before (:or alphabetic numeric "_") whitespace)
+      (token 'CARRIER lexeme)]
      ;; eof
      [(eof)
       (void)]))

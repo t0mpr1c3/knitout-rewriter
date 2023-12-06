@@ -7,7 +7,6 @@
 (require brag/support
          racket/syntax
          syntax/parse
-         syntax/warn
          threading)
 (require "knitout-grammar.rkt"
          "knitout-lexer.rkt")
@@ -16,17 +15,43 @@
 ;; returns AST
 (define (knitout-parse str)
   (let* ([k-input-port (open-input-string (string-downcase str))]
-         [k-token-thunk (tokenize k-input-port)]
+         [k-token-thunk (tokenize-knitout k-input-port)]
          [k-stx (parse k-token-thunk)])
+    (println k-stx)
     (parse-knitout k-stx)))
 
 ;; tower of macros to process AST
 
 (define (parse-knitout k-stx)
   (syntax-parse k-stx
-    [pattern-stx
-     (datum->syntax k-stx
-                    (parse-pattern (syntax->list #'pattern-stx)))]))
+    [(_ magic-stx script-stx)
+     `(knitout
+       ,(parse-magic (cadr (syntax->datum #'magic-stx)))
+       ,@(parse-script (syntax->datum #'script-stx)))]))
+
+(define (parse-magic version)
+  (when (> version 2)
+    (displayln (format "Warning: Knitout is version ~a, but this code only knows about versions up to 2." version)))
+  `(version ,version))
+
+(define (parse-script script-stx)
+  (syntax-parse script-stx
+    [(_ header-stxs ... pattern-stx)
+     (list
+      (for/list ([header-stx (in-list (syntax->list #'(header-stxs ...)))]
+                #:do [(define res (parse-header header-stx))]
+                #:when (not (void? res)))
+       res)
+      (parse-pattern #'pattern-stx))]))
+
+(define (parse-header header-stx)
+  (syntax-parse header-stx
+    [(_ header-stx)
+     `(header
+       ,@(let ([m (regexp-match #px"(.*?): (.*)" (syntax->datum #'header-stx))])
+          (if (false? m)
+              null
+              (cdr m))))]))
 
 (define (parse-pattern pattern-stx)
   (syntax-parse pattern-stx
@@ -118,12 +143,5 @@
              list->set
              set->list
              (sort <)))]))
-
-;; from alternative specification in https://doi.org/10.1145/3592449
-(define (parse-yarn yarn-stx)
-  (syntax-parse yarn-stx
-    [(_ carrier-stx size-stx)
-     `(yarn ,(syntax->datum #'carrier-stx)
-            ,(syntax->datum #'size-stx))]))
 
 ;; end

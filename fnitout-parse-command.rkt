@@ -39,49 +39,60 @@
            (parse-needle #'needle-stx)
            (parse-length #'length-stx)
            (parse-yarn #'yarn-stx)
-           comment)]
+           comment
+           null)]
     [(_ {~literal KNIT} dir-stx needle-stx length-stx yarn-stxs ...)
      (Knit (parse-direction #'dir-stx)
            (parse-needle #'needle-stx)
            (parse-length #'length-stx)
            (parse-yarns #'(yarn-stxs ...))
-           comment)]
+           comment
+           null)]
     [(_ {~literal SPLIT} dir-stx src-needle-stx dst-needle-stx length-stx yarn-stxs ...)
      (Split (parse-direction #'dir-stx)
             (parse-needle #'src-needle-stx)
             (parse-needle #'dst-needle-stx)
             (parse-length #'length-stx)
             (parse-yarns #'(yarn-stxs ...))
-            comment)]
+            comment
+           null)]
     [(_ {~literal MISS} dir-stx needle-stx carrier-stx)
      (Miss (parse-direction #'dir-stx)
            (parse-needle #'needle-stx)
            (parse-carrier #'carrier-stx)
-           comment)]
+           comment
+           null)]
     [(_ {~literal IN} dir-stx needle-stx carrier-stx)
      (In (parse-direction #'dir-stx)
          (parse-needle #'needle-stx)
          (parse-carrier #'carrier-stx)
-         comment)]
+         comment
+           null)]
     [(_ {~literal OUT} dir-stx needle-stx carrier-stx)
      (Out (parse-direction #'dir-stx)
           (parse-needle #'needle-stx)
           (parse-carrier #'carrier-stx)
-          comment)]
+          comment
+           null)]
     [(_ {~literal DROP} needle-stx)
      (Drop (parse-needle #'needle-stx)
-           comment)]
+           comment
+           null)]
     [(_ {~literal XFER} src-needle-stx dst-needle-stx)
      (Xfer (parse-needle #'src-needle-stx)
            (parse-needle #'dst-needle-stx)
-           comment)]
+           comment
+           null)]
     [(_ {~literal RACK} racking-stx)
      (Rack (parse-racking #'racking-stx)
-           comment)]
+           comment
+           null)]
     [(_ {~literal NOP})
-     (Nop comment)]
+     (Nop comment
+           null)]
     [({~literal comment} comment-stx)
-     (Nop (syntax->datum #'comment-stx))]))
+     (Nop (syntax->datum #'comment-stx)
+           null)]))
 
 ;; sort yarns by carrier
 (define (parse-yarns yarns-stx)
