@@ -1,4 +1,4 @@
-#lang racket
+#lang typed/racket
 
 ;; https://doi.org/10.1145/3592449
 
@@ -10,147 +10,192 @@
 (require racket/syntax
          syntax/parse
          threading)
-(require "fnitout-contracts.rkt"
-         "fnitout-parser.rkt")
+(require "fnitout-command.rkt"
+         "fnitout-validator.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; inputs & outputs knitout AST
-(define (knitout-optimize f-cmds)
-  (~> f-cmds
-      merge-rack
-      merge-miss
-      squish
-      slide
-      ))
+;; rewrite rule 1
+;; knitout operations with disjoint extents can be reordered
+;; TODO: MOVE 
+
+(: extent : Integer Command -> (Option Extent))
+(define (extent racking cmd)
+  (cond [(Nop? cmd)
+         #f]
+        [(Rack? cmd)
+         (Extent (Interval -inf.0 +inf.0)
+                 (Interval -inf.0 +inf.0))]
+        [else
+         (let* ([dir (command-dir cmd)]
+                [needle (command-needle cmd)]
+                [bed (Needle-bed needle)]
+                [pos (needle-physical-position
+                      racking
+                      needle)]
+                [carriers (command-carriers cmd)]
+                [ys (map Carrier-val carriers)])
+               (cond [(Tuck? cmd)
+                      (Extent (interval-around pos)
+                              (if (eq? 'f bed)
+                                  (Interval -inf.0 (car ys))
+                                  (Interval (car ys) +inf.0)))]
+                     [(Knit? cmd)
+                      (Extent (interval-around pos)
+                              (if (eq? 'f bed)
+                                  (Interval -inf.0 (apply max ys))
+                                  (Interval (apply min ys) +inf.0)))]
+                     [(Split? cmd)
+                      (Extent (interval-around pos)
+                              (Interval -inf.0 +inf.0))]
+                     [(Miss? cmd)
+                      (Extent (interval-around pos)
+                              (Interval (car ys) (car ys)))]
+                     [(or (In? cmd)
+                          (Out? cmd))
+                      (Extent (if (eq? '+ dir)
+                                  (Interval (+ pos 0.5) (+ pos 0.5))
+                                  (Interval (- pos 0.5) (- pos 0.5)))
+                              (Interval (car ys) (car ys)))]
+                     [(Drop? cmd)
+                      (Extent (Interval pos pos)
+                              (if (eq? 'f bed)
+                                  (Interval -inf.0 -inf.0)
+                                  (Interval +inf.0 +inf.0)))]
+                     [(Xfer? cmd)
+                      (Extent (Interval pos pos)
+                              (Interval -inf.0 +inf.0))]
+                     [else (error 'fnitout "unknown command")]))]))
+
+(: interval-around : Integer -> Interval)
+(define (interval-around pos)
+  (Interval (- pos 0.5) (+ pos 0.5)))
+
+(: extents-disjoint? : Extent Extent -> Boolean)
+(define (extents-disjoint? e1 e2)
+  (or (extents-horizontally-disjoint? e1 e2)
+      (extents-vertically-disjoint?   e1 e2)))
+
+(: extents-horizontally-disjoint? : Extent Extent -> Boolean)
+(define (extents-horizontally-disjoint? e1 e2)
+  (intervals-disjoint?
+   (Extent-x e1)
+   (Extent-x e2)))
+
+(: extents-vertically-disjoint? : Extent Extent -> Boolean)
+(define (extents-vertically-disjoint? e1 e2)
+  (intervals-disjoint?
+   (Extent-y e1)
+   (Extent-y e2)))
+
+;; NB intervals are defined to include the boundary,
+;; so strict inequality is required
+(: intervals-disjoint? : Interval Interval -> Boolean)
+(define (intervals-disjoint? i1 i2)
+  (or ((Interval-max i1) . < . (Interval-min i2))   ;; not <=
+      ((Interval-max i2) . < . (Interval-min i1)))) ;; not <=
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; rewrite rule 2
-;; opposite, consecutive `rack` commands cancel
-(define (merge-rack f-cmds)
-  (let loop1 ([cmds f-cmds]
-              [acc null])
-    (if (null? cmds)
-        (reverse acc)
-        (let ([cmd1 (car cmds)])
-          (if (Rack? cmd1)
-              (if (null? (cdr cmds))
-                  (loop1 null
-                         (cons cmd1 acc))
-                  (let ([cmd2 (cadr cmds)])
-                    (if (not (equal? cmd1
-                                     cmd2))
-                        ;; merge
-                        (loop1 (cddr cmds)
-                               acc)
-                        ;; next command
-                        (loop1 (cdr cmds)
-                               (cons cmd1 acc)))))
-              (loop1 (cdr cmds)
-                     (cons cmd1 acc)))))))
+;; opposite, consecutive Rack commands cancel
+(: merge-rack : (Listof Command) Natural -> (Listof Command))
+(define (merge-rack cmds pos)
+  (let ([len (length cmds)])
+    (when (< len (+ 2 pos))
+      (error 'fnitout "merge not possible at position ~a" pos))
+    (let ([cmd1 (list-ref cmds pos)]
+          [cmd2 (list-ref cmds (add1 pos))])
+      (unless (and (Rack? cmd1)
+                   (Rack? cmd2)
+                   (zero? (+ (Rack-racking cmd1)
+                             (Rack-racking cmd2)))) ;; equal and opposite
+        (error 'fnitout "merge not possible at position ~a" pos))
+      ;; eliminate both
+      (append
+       (take cmds pos)
+       (drop cmds (+ 2 pos))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; rewrite rule 2
-;; when `miss` at needle N and carrier C in one direction
-;; is followed by miss at needle N and carrier C in opposite direction,
+;; when Miss at needle N and carrier C in one direction
+;; is followed by Miss at needle N and carrier C in opposite direction,
 ;; both are eliminated
-(define (merge-miss f-cmds)
-  (let loop ([cmds f-cmds]
-             [acc null])
-    (if (null? cmds)
-        (reverse acc)
-        (let ([head (first cmds)])
-          (if (Miss? head)
-              (let ([next (second cmds)])
-                (if (Miss? next) ;; both `miss` commands
-                    (let ([head-dir (Miss-direction head)]
-                          [next-dir (Miss-direction next)]
-                          [head-needle (Miss-needle head)]
-                          [next-needle (Miss-needle next)]
-                          [head-carrier (Miss-carrier head)]
-                          [next-carrier (Miss-carrier next)])
-                      (if (and (equal? head-needle
-                                       next-needle)     ;; same needle
-                               (equal? head-carrier
-                                       next-carrier)    ;; same carrier
-                               (not (equal? head-dir
-                                            next-dir))) ;; different directions
-                          ;; eliminate both
-                          (loop (cddr cmds)
-                                acc)
-                          ;; next command
-                          (loop (cdr cmds)
-                                (cons head acc))))
-                    (loop (cdr cmds)
-                          (cons head acc))))
-              (loop (cdr cmds)
-                    (cons head acc)))))))
+(: merge-miss : (Listof Command) Natural -> (Listof Command))
+(define (merge-miss cmds pos)
+  (let ([len (length cmds)])
+    (when (< len (+ 2 pos))
+      (error 'fnitout "merge not possible at position ~a" pos))
+    (let ([cmd1 (list-ref cmds pos)]
+          [cmd2 (list-ref cmds (add1 pos))])
+      (unless (and (Miss? cmd1)
+                   (Miss? cmd2)
+                   (equal? (Miss-needle cmd1)
+                           (Miss-needle cmd2))           ;; same needle
+                   (equal? (Miss-carrier cmd1)
+                           (Miss-carrier cmd2))          ;; same carrier
+                   (not (equal? (Miss-direction cmd1)
+                                (Miss-direction cmd2)))) ;; different directions
+      (error 'fnitout "merge not possible at position ~a" pos))
+      ;; eliminate both
+      (append
+       (take cmds pos)
+       (drop cmds (+ 2 pos))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; rewrite rule 3
-;; eliminates the first of consecutive, opposite `xfer` commands
-(define (squish f-cmds)
-  (let loop ([cmds f-cmds]
-             [acc null])
-    (if (null? cmds)
-        (reverse acc)
-        (let ([head (first cmds)])
-          (if (Xfer? head)
-              (let ([next (second cmds)])
-                (if (Xfer? next) ;; both `xfer` commands
-                    (let ([head-src-needle (Xfer-needle head)]
-                          [next-src-needle (Xfer-needle next)]
-                          [head-dst-needle (Xfer-target head)]
-                          [next-dst-needle (Xfer-target next)])
-                      (if (and (equal? head-src-needle
-                                       next-dst-needle)  ;; same needle
-                               (equal? head-dst-needle
-                                       next-src-needle)) ;; same needle
-                          ;; eliminate first xfer
-                          (loop (cddr cmds)
-                                (cons next acc))
-                          ;; next command
-                          (loop (cdr cmds)
-                                (cons head acc))))
-                    ;; next command
-                    (loop (cdr cmds)
-                          (cons head acc))))
-              ;; next command
-              (loop (cdr cmds)
-                    (cons head acc)))))))
+;; eliminates the first of consecutive, opposite Xfers
+(: squish : (Listof Command) Natural -> (Listof Command))
+(define (squish cmds pos)
+  (let ([len (length cmds)])
+    (when (< len (+ 2 pos))
+      (error 'fnitout "squish not possible at position ~a" pos))
+    (let ([cmd1 (list-ref cmds pos)]
+          [cmd2 (list-ref cmds (add1 pos))])
+      (unless (and (Xfer? cmd1)
+                   (Xfer? cmd2)
+                   (equal? (Xfer-needle cmd1)
+                           (Xfer-target cmd2))  ;; same needle
+                   (equal? (Xfer-target cmd1)
+                           (Xfer-needle cmd2))) ;; same needle
+      (error 'fnitout "squish not possible at position ~a" pos))
+      ;; eliminate first Xfer
+      (append
+       (take cmds pos)
+       (drop cmds (+ 1 pos))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; rewrite rule 4
-;; changes the needle location where `tuck` is performed
-(define (slide f-cmds)
-  (let loop ([cmds f-cmds]
-             [acc null])
-    (if (null? cmds)
-        (reverse acc)
-        (let ([head (first cmds)])
-          (if (Tuck? head)
-              (let ([next (second cmds)])
-                (if (Xfer? next) ;; `tuck` then `xfer`
-                    (let ([head-needle     (Tuck-needle head)]
-                          [next-src-needle (Xfer-needle next)])
-                      (if (equal? head-needle
-                                  next-src-needle) ;; same needle
-                          ;; change location of `tuck`
-                          (loop (cddr cmds)
-                                (cons next
-                                      (cons (struct-copy Tuck head
-                                                         [needle (Xfer-target next)])
-                                            acc)))
-                          ;; next command
-                          (loop (cdr cmds)
-                                (cons head acc))))
-                    (loop (cdr cmds)
-                          (cons head acc))))
-              (loop (cdr cmds)
-                    (cons head acc)))))))
+;; changes the needle location where Tuck is performed
+(: slide : (Listof Command) Natural -> (Listof Command))
+(define (slide cmds pos)
+  (let ([len (length cmds)])
+    (when (< len (+ 2 pos))
+      (error 'fnitout "slide not possible at position ~a" pos))
+    (let ([cmd1 (list-ref cmds pos)]
+          [cmd2 (list-ref cmds (add1 pos))])
+      (unless (and (Tuck? cmd1)
+                   (Xfer? cmd2) ;; Tuck then Xfer
+                   (equal? (Tuck-needle cmd1)
+                           (Xfer-needle cmd2))) ;; same needle
+      (error 'fnitout "slide not possible at position ~a" pos))
+      ;; change location of Tuck
+      (append
+       (take cmds pos)
+       (list
+        (struct-copy Tuck cmd1
+                     [needle (Xfer-target cmd2)]))
+       (drop cmds (+ 1 pos))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; rewrite rule 5
+;; changes the needle location where Knit or Tuck is performed
+(: conjugate : (Listof Command) Natural -> (Listof Command))
+(define (conjugate cmds pos)
+  cmds) ;; placeholder
 
 ;; end

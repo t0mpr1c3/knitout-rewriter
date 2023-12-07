@@ -3,7 +3,7 @@
 ;; https://doi.org/10.1145/3592449
 
 (provide (contract-out
-          [fnitout-parse (-> string? (listof cmd/c))]))
+          [fnitout-parse (-> string? (listof (cons/c cmd/c string?)))]))
 
 (require brag/support
          racket/syntax
@@ -15,7 +15,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; parse knitout from string
-;; returns formal knitout AST
+;; returns list of pairs each with car = command and cdr = comment
 ;; FIXME parse line number of instruction into comment for debugging
 (define (fnitout-parse str)
   (let* ([f-input-port (open-input-string (string-downcase str))]
