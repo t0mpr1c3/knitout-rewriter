@@ -18,12 +18,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct Record
-  ([cmd : Command]
-   [comment : String]
-   [error : (Listof String)])
-  #:prefab)
-
 ;; holds machine configuration
 (struct Validator
   ([needle-count : Positive-Integer]  ;; number of needles in each bed
@@ -50,15 +44,15 @@
     (list msg))))
 
 ;; validate formal knitout AST
-(: validate : Validator (Listof (Pairof Command String)) -> (Listof Record))
+(: validate : Validator Script -> (Listof Record))
 (define (validate self script)
   (let ([machine (Validator-machine self)])
-    (let vloop ([cmds : (Listof (Pairof Command String)) script]
+    (let vloop ([cmds : (Listof Instruction) script]
                 [acc  : (Listof Record) null])
       (if (null? cmds)
           (reverse acc)
-          (let ([cmd     (caar cmds)]
-                [comment (cdar cmds)])
+          (let ([cmd     (Instruction-command (car cmds))]
+                [comment (Instruction-comment (car cmds))])
             (current-validity null)
             (vloop (cdr cmds)
                    (cons
