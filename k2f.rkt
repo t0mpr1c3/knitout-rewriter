@@ -5,7 +5,8 @@
 (provide k2f)
 
 (require threading)
-(require "fnitout-command.rkt")
+(require "fnitout-command.rkt"
+         "fnitout-serialization.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -428,7 +429,8 @@
                 (error 'fnitout "fractional pitch racking not yet supported")
                 (if (= racking racking~)
                     (values racking~
-                            (cons (Instruction (Nop) original) ;; redundant Rack command
+                            (cons (Instruction (Nop)
+                                               (string-append original " (ignored)")) ;; redundant Rack command
                                   output))
                     (let ([s (sign (- racking~ racking))])
                       (let next-rack ([r         racking]
@@ -863,12 +865,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;#|
+#|
 ;; test
 (define f (k2f "../fenced-tangle-supplemental/examples/pleat-tube/one-fourth.k"))
-(display (script->string f))
-(with-output-to-file "one-fourth.f"
-  (thunk (script-export f)))
-;|#
+(displayln (script->string f 'knitout))
+;(displayln (script->string f))
+;(with-output-to-file "one-fourth.f"
+;  (thunk (script-export f)))
+|#
 
 ;; end

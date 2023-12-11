@@ -46,13 +46,14 @@
 ;; validate formal knitout AST
 (: validate : Validator Script -> (Listof Record))
 (define (validate self script)
-  (let ([machine (Validator-machine self)])
-    (let vloop ([cmds : (Listof Instruction) script]
+  (let ([machine (Validator-machine self)]
+        [expanded (script-expand script)])
+    (let vloop ([cmds : (Listof (Pairof Command String)) expanded]
                 [acc  : (Listof Record) null])
       (if (null? cmds)
           (reverse acc)
-          (let ([cmd     (Instruction-command (car cmds))]
-                [comment (Instruction-comment (car cmds))])
+          (let ([cmd     (caar cmds)]
+                [comment (cdar cmds)])
             (current-validity null)
             (vloop (cdr cmds)
                    (cons
@@ -171,7 +172,7 @@
 (: check-carrier-positions : MachineState Command -> Void)
 (define (check-carrier-positions machine cmd)
   (let* ([direction (command-carrier-position-dir cmd)] ;; NB command `Out` is a special case
-         [needle    (command-needle cmd)]
+         [needle    (op-needle cmd)]
          [carriers  (command-carriers cmd)]
          [racking   (MachineState-racking machine)]
          [expected  (carrier-physical-position racking needle direction)]
@@ -187,8 +188,8 @@
 ;; check that source and target needles are aligned
 (: check-target : MachineState Command -> Void)
 (define (check-target machine cmd)
-  (let* ([needle  (command-needle cmd)]
-         [target  (command-target cmd)]
+  (let* ([needle  (op-needle cmd)]
+         [target  (op-target cmd)]
          [racking (MachineState-racking machine)])
     (when (eq? (Needle-bed needle)
                (Needle-bed target))
@@ -198,11 +199,11 @@
       (invalid "needle and target are not aligned"))))
 
 ;; move all attached loops from source needle to target
-(: move-attachments : MachineState Command -> Void)
-(define (move-attachments machine cmd)
+(: move-attachments : MachineState Operation -> Void)
+(define (move-attachments machine op)
   (let ([attachments (MachineState-attachments machine)]
-        [needle (command-needle cmd)]
-        [target (command-target cmd)])
+        [needle (op-needle op)]
+        [target (op-target op)])
     (for ([y (in-hash-keys attachments)])
       (when (equal? needle
                     (hash-ref attachments y))
@@ -213,7 +214,7 @@
 (: set-attachments : MachineState Command -> Void)
 (define (set-attachments machine cmd)
   (let* ([attachments (MachineState-attachments machine)]
-         [needle (command-needle cmd)]
+         [needle (op-needle cmd)]
          [carriers (command-carriers cmd)]
          [yarns (map Carrier-val carriers)])
     (for ([y (in-list yarns)])
@@ -224,7 +225,7 @@
 (define (set-carrier-positions machine cmd)
   (let* ([carrier-positions (MachineState-carrier-positions machine)]
          [dir (command-dir cmd)]
-         [needle (command-needle cmd)]
+         [needle (op-needle cmd)]
          [carriers (command-carriers cmd)]
          [yarns (map Carrier-val carriers)]
          [racking (MachineState-racking machine)])

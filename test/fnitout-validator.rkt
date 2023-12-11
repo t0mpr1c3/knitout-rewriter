@@ -12,11 +12,13 @@
 ;  (require typed/rackunit)
 
   (define script
+    (map (λ ([x : (Pairof Command String)])
+            (Instruction (car x) (cdr x)))
     (fnitout-parse
      (port->string
       (open-input-file
        ;"../../fenced-tangle-supplemental/examples/pleat-tube/one-fourth.f"))))
-       "../../fenced-tangle-supplemental/examples/pleat-tube/two-thirds.f"))))
+       "../../fenced-tangle-supplemental/examples/pleat-tube/two-thirds.f")))))
   (define validated (validate (make-Validator 250 10) script))
 
   (for ([x : Record

@@ -66,6 +66,11 @@
 (define (opposite-dir direction)
   (if (eq? '+ (Direction-val direction)) '- '+))
 
+(define (opposite-direction direction)
+  (if (eq? '+ (Direction-val direction))
+      (Direction '-)
+      (Direction '+)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Needle struct
