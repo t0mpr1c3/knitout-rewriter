@@ -130,22 +130,22 @@
 ;; SHIFT operation
 ;; moves loops from one needle to another needle on the same bed
 (struct SHIFT
-  ([needle : Needle]
-   [target : Needle]
-   [r : Integer])
+  ([n : Needle]
+   [r : Integer]
+   [j : Integer])
   #:prefab)
 
-(: SHIFT-j : SHIFT -> Integer)
-(define (SHIFT-j self)
-  (let* ([n (SHIFT-needle self)]
-         [t (SHIFT-target self)]
-         [ni (Needle-index n)]
-         [ti (Needle-index t)])
-    (- ti ni)))
+(: SHIFT-target : SHIFT -> Needle)
+(define (SHIFT-target self)
+  (let* ([n (SHIFT-n self)]
+         [j (SHIFT-j self)]
+         [b (Needle-bed n)]
+         [x (Needle-index n)])
+    (Needle b (+ x j))))
 
 (: SHIFT-racking : SHIFT -> Integer)
 (define (SHIFT-racking self)
-  (let* ([n (SHIFT-needle self)]
+  (let* ([n (SHIFT-n self)]
          [r (SHIFT-r self)]
          [j (SHIFT-j self)]
          [nb (Needle-bed n)])
@@ -155,56 +155,53 @@
 
 (: SHIFT-cmds : SHIFT -> (Listof Command))
 (define (SHIFT-cmds self)
-  (let* ([n (SHIFT-needle self)]
-         [t (SHIFT-target self)]
+  (let* ([n (SHIFT-n self)]
          [r (SHIFT-r self)]
-         [nb (Needle-bed n)]
-         [ni (Needle-index n)]
-         [tb (Needle-bed t)]
-         [ti (Needle-index t)]
-         [j (- ti ni)])
-    (assert (eq? nb tb))
-    (if (eq? 'f nb)
-        `(,(Xfer n (Needle 'b (- ni r)))
+         [j (SHIFT-j self)]
+         [b (Needle-bed n)]
+         [x (Needle-index n)]
+         [x+j (+ x j)]
+         [x+r (+ x r)]
+         [x-r (- x r)])
+    (if (eq? 'f b)
+        `(,(Xfer n (Needle 'b x-r))
           ,@(RACK-cmds (RACK r j))
-          ,(Xfer (Needle 'b (- ni r)) t))
-        `(,(Xfer n (Needle 'f (+ ni r)))
+          ,(Xfer (Needle 'b x-r) (Needle 'f x+j)))
+        `(,(Xfer n (Needle 'f x+r))
           ,@(RACK-cmds (RACK r (- j)))
-          ,(Xfer (Needle 'f (+ ni r)) t)))))
+          ,(Xfer (Needle 'f x+r) (Needle 'b x+j))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; MOVE operation
 ;; SHIFT followed by RACK to reset racking
 (struct MOVE
-  ([needle : Needle]
-   [target : Needle]
-   [r : Integer])
+  ([n : Needle]
+   [r : Integer]
+   [j : Integer])
   #:prefab)
+
+(: MOVE-target : MOVE -> Needle)
+(define (MOVE-target self)
+  (let* ([n (MOVE-n self)]
+         [j (MOVE-j self)]
+         [b (Needle-bed n)]
+         [x (Needle-index n)])
+    (Needle b (+ x j))))
 
 (: MOVE-racking : MOVE -> Integer)
 (define (MOVE-racking self)
   (MOVE-r self))
 
-(: MOVE-j : MOVE -> Integer)
-(define (MOVE-j self)
-  (let* ([n (MOVE-needle self)]
-         [t (MOVE-target self)]
-         [r (MOVE-r self)]
-         [s (SHIFT n t r)])
-    (SHIFT-j s)))
-
 (: MOVE-cmds : MOVE -> (Listof Command))
 (define (MOVE-cmds self)
-  (let* ([n (MOVE-needle self)]
-         [t (MOVE-target self)]
+  (let* ([n (MOVE-n self)]
          [r (MOVE-r self)]
-         [s (SHIFT n t r)]
-         [j (SHIFT-j s)]
-         [nb (Needle-bed n)])
+         [j (MOVE-j self)]
+         [b (Needle-bed n)])
     (append
-     (SHIFT-cmds s)
-     (if (eq? 'f nb)
+     (SHIFT-cmds (SHIFT n r j))
+     (if (eq? 'f n)
          (RACK-cmds (RACK (+ r j) (- j)))
          (RACK-cmds (RACK (- r j) j))))))
 
@@ -249,6 +246,8 @@
         [(Out?   self) (Direction-val (Out-direction   self))]
         [else (error 'fnitout "instruction does not specify a direction")]))
 
+;; logical position of carrier prior to operation
+;; Fig. 11
 (: command-carrier-position-dir : Command -> Dir)
 (define (command-carrier-position-dir self)
   (cond [(Tuck?  self) (opposite-dir  (Tuck-direction  self))]
@@ -269,8 +268,8 @@
         [(Out?   self) (Out-needle   self)]
         [(Drop?  self) (Drop-needle  self)]
         [(Xfer?  self) (Xfer-needle  self)]
-        [(SHIFT? self) (SHIFT-needle self)]
-        [(MOVE?  self) (MOVE-needle  self)]
+        [(SHIFT? self) (SHIFT-n      self)]
+        [(MOVE?  self) (MOVE-n       self)]
         [else (error 'fnitout "instruction does not specify a needle")]))
 
 (: op-target : Operation -> Needle)

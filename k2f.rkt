@@ -175,8 +175,8 @@
 (define (get-pattern pattern)
   (next-line pattern
              0
-             (make-integer-carriers (current-carriers))
              (hash)
+             (make-integer-carriers (current-carriers))
              null))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -211,8 +211,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(: next-line : (Listof String) Integer Carriers Loops Script -> Script)
-(define (next-line lines racking carriers loops output)
+(: next-line : (Listof String) Integer Loops Carriers Script -> Script)
+(define (next-line lines racking loops carriers output)
   (if (null? lines)
       (reverse output)
 
@@ -230,8 +230,8 @@
                                output))])
               (next-line (cdr lines)
                          racking
-                         carriers
                          loops
+                         carriers
                          output~))
 
               ;; handle operations
@@ -245,8 +245,8 @@
                        (equal? op "pause"))
                    (next-line (cdr lines)
                               racking
+                         loops
                               carriers
-                              loops
                               output)]
 
                   [(or (equal? op "in")
@@ -255,8 +255,8 @@
                                  (inhook original args carriers output)])
                      (next-line (cdr lines)
                                 racking
+                         loops
                                 carriers~
-                                loops
                                 output~))]
 
                   [(or (equal? op "out")
@@ -265,8 +265,8 @@
                                  (outhook original args carriers output)])
                      (next-line (cdr lines)
                                 racking
-                                carriers~
                                 loops
+                                carriers~
                                 output~))]
 
                   ;; TODO (JL): miss back-bed-attached carriers over
@@ -275,8 +275,8 @@
                                  (rack original args racking output)])
                      (next-line (cdr lines)
                                 racking~
-                                carriers
                                 loops
+                                carriers
                                 output~))]
 
                   ;; Stitch instruction is ignored
@@ -286,8 +286,8 @@
                      (stitch args)
                      (next-line (cdr lines)
                                 racking
-                                carriers
                                 loops
+                                carriers
                                 output))]
 
                   ;; X-stitch-number instruction is ignored
@@ -297,8 +297,8 @@
                      (x-stitch-number args)
                      (next-line (cdr lines)
                                 racking
-                                carriers
                                 loops
+                                carriers
                                 output))]
 
                   [(or (equal? op "miss")
@@ -308,12 +308,12 @@
                        (equal? op "amiss")
                        (equal? op "drop")
                        (equal? op "xfer"))
-                   (let-values ([(carriers~ loops~ output~)
-                                 (tuck-knit-split original op args racking carriers loops output)])
+                   (let-values ([(loops~ carriers~ output~)
+                                 (tuck-knit-split original op args racking loops carriers output)])
                      (next-line (cdr lines)
                                 racking
-                                carriers~
                                 loops~
+                                carriers~
                                 output~))]
 
                   [(string-prefix? op "x-")
@@ -321,8 +321,8 @@
                      (displayln (format "Warning: unsupported extension operation '~a'." op))
                      (next-line (cdr lines)
                                 racking
-                                carriers
                                 loops
+                                carriers
                                 output))]
                   [else
                    (error 'fnitout "unsupported operation '~a'." op)])))))))
@@ -349,10 +349,10 @@
 (define (inhook original args carriers output)
   (if (zero? (length args))
       (error 'fnitout "can't bring in no carriers")
-      (inhook-aux args original carriers output)))
+      (inhook-aux original args carriers output)))
 
-(: inhook-aux : (Listof String) String Carriers Script -> (values Carriers Script))
-(define (inhook-aux cs original carriers output)
+(: inhook-aux : String (Listof String) Carriers Script -> (values Carriers Script))
+(define (inhook-aux original cs carriers output)
   (if (null? cs)
       (values carriers output)
       (let ([cn (car cs)])
@@ -363,8 +363,8 @@
             (error 'fnitout "yarn carrier ~a is already in" cn))
           (when (carrier-pending? carrier)
             (error 'fnitout "yarn carrier ~a is pending" cn))                                     
-          (inhook-aux (cdr cs)
-                      ""
+          (inhook-aux ""
+                      (cdr cs)
                       (hash-set carriers cn
                                 (struct-copy YarnCarrier carrier
                                              [pending-idx (length output)]))
@@ -377,10 +377,10 @@
 (define (outhook original args carriers output)
   (if (zero? (length args))
       (error 'fnitout "can't take out no carriers")
-      (outhook-aux args original carriers output)))
+      (outhook-aux original args carriers output)))
       
-(: outhook-aux : (Listof String) String Carriers Script -> (values Carriers Script))
-(define (outhook-aux cs original carriers output)
+(: outhook-aux : String (Listof String) Carriers Script -> (values Carriers Script))
+(define (outhook-aux original cs carriers output)
   (if (null? cs)
       (values carriers output)
       (let ([cn (car cs)])
@@ -409,8 +409,8 @@
                            [output~
                             (cons (Instruction cmd original)
                                   output)])
-                      (outhook-aux (cdr cs)                                                          
-                                   ""
+                      (outhook-aux ""
+                                   (cdr cs)
                                    carriers~
                                    output~)))))))))
 
@@ -433,25 +433,15 @@
                                                (string-append original " (ignored)")) ;; redundant Rack command
                                   output))
                     (let ([s (sign (- racking~ racking))])
-                      (let next-rack ([r         racking]
-                                      [original~ original]
+                      (let next-rack ([original~ original]
+                                      [r         racking]
                                       [output~   output])
                         (if (= r racking~)
                             (values racking~ output~)
-                            (next-rack (+ r s)
-                                       ""
+                            (next-rack ""
+                                       (+ r s)
                                        (cons (Instruction (Rack (+ r s)) original~)
                                              output~)))))))))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(: sign : Real -> Integer)
-(define (sign x)
-  (if (positive? x)
-      +1
-      (if (negative? x)
-          -1
-          0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -485,9 +475,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (: tuck-knit-split :
-   String String (Listof String) Integer Carriers Loops Script ->
-   (values Carriers Loops Script))
-(define (tuck-knit-split original op args racking carriers loops output)  
+   String String (Listof String) Integer Loops Carriers Script ->
+   (values Loops Carriers Script))
+(define (tuck-knit-split original op args racking loops carriers output)  
   ;; Amiss is synonym for Tuck  in direction + with no carriers
   ;; Drop  is synonym for Knit  in direction + with no carriers
   ;; Xfer  is synonym for Split in direction + with no carriers
@@ -516,12 +506,12 @@
     (let*-values
         ([(carriers2 original2 output2)
           (setup-carriers d n racking cs carriers original output)]
-         [(carriers3 loops3 output3)
+         [(loops3 carriers3 output3)
           (do-operation op d n t cs
                         (calculate-yarn-lengths d n cs racking carriers2)
-                        carriers2 loops original2 output2)])
-      (values (update-attachments op d n cs carriers3)
-              loops3
+                        loops carriers2 original2 output2)])
+      (values loops3
+              (update-attachments op d n cs carriers3)
               output3))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -660,7 +650,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
-
 (: calculate-yarn-lengths : Dir Needle (Listof String) Integer Carriers -> (Listof Yarn))
 (define (calculate-yarn-lengths d n cs racking carriers2)
   (let* ([w 0.0] ;; "needle width"         
@@ -688,9 +677,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (: do-operation :
-   String Dir Needle (U False Needle) (Listof String) (Listof Yarn) Carriers Loops String Script ->
-   (values Carriers Loops Script))
-(define (do-operation op d n t cs yarns carriers2 loops original2 output2)  
+   String Dir Needle (U False Needle) (Listof String) (Listof Yarn) Loops Carriers String Script ->
+   (values Loops Carriers Script))
+(define (do-operation op d n t cs yarns loops carriers original output)  
   ;; operation name decay based on loop presence
   (let* ([op~ (if (and (or (equal? op "knit")
                            (equal? op "split")
@@ -706,17 +695,17 @@
     
     (cond
       [(equal? op~ "miss")
-       (let ([output3 (miss-yarns d n cs carriers2 original2 output2)])
-         (values carriers2 loops output3))]
+       (let ([output~ (miss-yarns d n cs carriers original output)])
+         (values loops carriers output~))]
       
       [(or (equal? op~ "amiss")
            (equal? op~ "tuck"))
        (if (zero? yarn-count)
-           (values carriers2
-                   loops
+           (values loops
+                   carriers
                    (cons (Instruction (Nop)
-                                      (string-append original2 " (amiss ignored)"))
-                         output2))
+                                      (string-append original " (amiss ignored)"))
+                         output))
            (let* ([cmd (Tuck
                         (Direction d)
                         n
@@ -725,29 +714,29 @@
                   [n-loops (hash-ref loops n (thunk 0))]
                   [loops~ (hash-set loops n (+ n-loops
                                                yarn-count))])
-             (values carriers2
-                     loops~
-                     (cons (Instruction cmd original2)
-                           output2))))]
+             (values loops~
+                     carriers
+                     (cons (Instruction cmd original)
+                           output))))]
       
       [(or (equal? op~ "drop")
            (equal? op~ "knit"))
        (if (zero? yarn-count)
            (let ([loops~ (hash-remove loops n)])
-             (values carriers2
-                     loops~
-                     (cons (Instruction (Drop n) original2)
-                           output2)))
+             (values loops~
+                     carriers
+                     (cons (Instruction (Drop n) original)
+                           output)))
            (let ([cmd (Knit
                        (Direction d)
                        n
                        (Length stitchsize)
                        yarns)]
                  [loops~ (hash-set loops n yarn-count)])
-             (values carriers2
-                     loops~
-                     (cons (Instruction cmd original2)
-                           output2))))]
+             (values loops~
+                     carriers
+                     (cons (Instruction cmd original)
+                           output))))]
       
       [(or (equal? op~ "xfer")
            (equal? op~ "split"))
@@ -769,10 +758,10 @@
                 [loops2 (hash-set loops1 t (+ t-loops n-loops))])
            ;; update carrier attachments & parkings
            ;; (for *all* carriers -- though carriers in cs will get this info overwritten)
-           (values (update-carriers b i t (hash-keys carriers2) carriers2)
-                   loops2
-                   (cons (Instruction cmd original2)
-                         output2))))]
+           (values loops2
+                   (update-carriers b i t (hash-keys carriers) carriers)
+                   (cons (Instruction cmd original)
+                         output))))]
       
       [else (error 'fnitout "operation ~a should not be processed here" op)])))
 
@@ -868,10 +857,10 @@
 #|
 ;; test
 (define f (k2f "../fenced-tangle-supplemental/examples/pleat-tube/one-fourth.k"))
-(displayln (script->string f 'knitout))
-;(displayln (script->string f))
-;(with-output-to-file "one-fourth.f"
-;  (thunk (script-export f)))
+;(displayln (script->string f 'knitout))
+(displayln (script->string f))
+(with-output-to-file "one-fourth.f"
+  (thunk (script-export f)))
 |#
 
 ;; end

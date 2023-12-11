@@ -2,10 +2,12 @@
 
 ;; https://doi.org/10.1145/3592449
 
-(provide merge-rack
+(provide swap
+         merge-rack
          merge-miss
          squish
-         slide)
+         slide
+         conjugate)
 
 (require threading)
 (require "fnitout-machine.rkt"
@@ -249,8 +251,80 @@
 
 ;; rewrite rule 5
 ;; changes the needle location where Knit or Tuck is performed
-(: conjugate : (Listof Operation) Natural -> (Listof Operation))
-(define (conjugate ops pos)
-  ops) ;; placeholder
+;; Table 2
+(: conjugate : MachineState Command Dir -> (Listof Operation))
+(define (conjugate machine cmd dir)
+  (unless (or (Knit? cmd)
+              (Tuck? cmd))
+    (error 'fnitout "only Knit and Tuck operations can be conjugated"))
+  (let* ([r (MachineState-racking machine)]
+         [d (command-dir cmd)]
+         [n (op-needle cmd)]
+         [cs (command-carriers cmd)]
+         [b (Needle-bed n)]
+         [x (Needle-index n)]
+         [x-1 (- x 1)]
+         [x+1 (+ x 1)]
+         [r-1 (- r 1)]
+         [r+1 (+ r 1)]
+         [n~ (Needle b (if (eq? '- dir) x-1 x+1))]
+         [cmd~ (if (Knit? cmd)
+                   (struct-copy Knit cmd [needle n~])
+                   (struct-copy Tuck cmd [needle n~]))]) 
+    
+    (cond [(and (eq? 'f b)
+                (eq? '+ d)               
+                (eq? '- dir)) ;; Left
+           `(,@(MISS '- (Needle 'f x-1) cs)
+             ,(SHIFT n r -1)
+             ,cmd~
+             ,@(MISS '+ (Needle 'f x) cs)
+             ,(SHIFT n~ r-1 1))]
+
+          [(and (eq? 'f b)
+                (eq? '+ d)
+                (eq? '+ dir)) ;; Right
+           `(,(SHIFT n r +1)
+             ,@(MISS '+ (Needle 'f x) cs)
+             ,cmd~
+             ,(SHIFT n~ r+1 -1)
+             ,@(MISS '- (Needle 'f x+1) cs))]
+
+          [(and (eq? 'f b)
+                (eq? '- d)
+                (eq? '- dir)) ;; Left
+           `(,(SHIFT n r -1)
+             ,@(MISS '- (Needle 'f x) cs)
+             ,cmd~
+             ,(SHIFT n~ r-1 +1)
+             ,@(MISS '+ (Needle 'f x-1) cs))]
+
+          [(and (eq? 'f b)
+                (eq? '- d)
+                (eq? '+ dir)) ;; Right
+           `(,@(MISS '+ (Needle 'f x+1) cs)
+             ,(SHIFT n r +1)
+             ,cmd~
+             ,@(MISS '- (Needle 'f x) cs)
+             ,(SHIFT n~ r+1 -1))]
+
+          [(and (eq? 'b b)
+                (eq? '- dir)) ;; Left
+           `(,(SHIFT n r -1)
+             ,cmd~
+             ,(SHIFT n~ r-1 +1))]
+
+          [(and (eq? 'b b)
+                (eq? '+ dir)) ;; Right
+           `(,(SHIFT n r +1)
+             ,cmd~
+             ,(SHIFT n~ r+1 -1))]
+
+          [else null])))
+
+(: MISS : Dir Needle (Listof Carrier) -> (Listof Command))
+(define (MISS d n cs)
+  (for/list ([c (in-list cs)])
+    (Miss (Direction d) n c)))
 
 ;; end
