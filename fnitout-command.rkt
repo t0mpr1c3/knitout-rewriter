@@ -26,7 +26,7 @@
 (define-type Dir
   (U '+
      '-))
-(define Dir? (make-predicate Bed))
+(define Dir? (make-predicate Dir))
 
 (define-type Bed
   (U 'f
@@ -104,19 +104,6 @@
   (+ (RACK-r self)
      (RACK-j self)))
 
-(: RACK-cmds : RACK -> (Listof Command))
-(define (RACK-cmds self)
-  (let ([r (RACK-r self)]
-        [j (RACK-j self)])
-    (let loop ([i : Integer 0]
-               [a : (Listof Command) null])
-      (if (= i j)
-          (reverse a)
-          (let ([i~ (+ i (sign (- j i)))])
-            (loop i~
-                  (cons (Rack (+ r i~))
-                        a)))))))
-
 (: sign : Real -> Integer)
 (define (sign x)
   (if (positive? x)
@@ -135,6 +122,10 @@
    [j : Integer])
   #:prefab)
 
+(: SHIFT-needle : SHIFT -> Needle)
+(define (SHIFT-needle self)
+  (SHIFT-n self))
+
 (: SHIFT-target : SHIFT -> Needle)
 (define (SHIFT-target self)
   (let* ([n (SHIFT-n self)]
@@ -148,28 +139,10 @@
   (let* ([n (SHIFT-n self)]
          [r (SHIFT-r self)]
          [j (SHIFT-j self)]
-         [nb (Needle-bed n)])
-    (if (eq? 'f nb)
+         [b (Needle-bed n)])
+    (if (eq? 'f b)
         (+ r j)
         (- r j))))
-
-(: SHIFT-cmds : SHIFT -> (Listof Command))
-(define (SHIFT-cmds self)
-  (let* ([n (SHIFT-n self)]
-         [r (SHIFT-r self)]
-         [j (SHIFT-j self)]
-         [b (Needle-bed n)]
-         [x (Needle-index n)]
-         [x+j (+ x j)]
-         [x+r (+ x r)]
-         [x-r (- x r)])
-    (if (eq? 'f b)
-        `(,(Xfer n (Needle 'b x-r))
-          ,@(RACK-cmds (RACK r j))
-          ,(Xfer (Needle 'b x-r) (Needle 'f x+j)))
-        `(,(Xfer n (Needle 'f x+r))
-          ,@(RACK-cmds (RACK r (- j)))
-          ,(Xfer (Needle 'f x+r) (Needle 'b x+j))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -180,6 +153,10 @@
    [r : Integer]
    [j : Integer])
   #:prefab)
+
+(: MOVE-needle : MOVE -> Needle)
+(define (MOVE-needle self)
+  (MOVE-n self))
 
 (: MOVE-target : MOVE -> Needle)
 (define (MOVE-target self)
@@ -193,18 +170,6 @@
 (define (MOVE-racking self)
   (MOVE-r self))
 
-(: MOVE-cmds : MOVE -> (Listof Command))
-(define (MOVE-cmds self)
-  (let* ([n (MOVE-n self)]
-         [r (MOVE-r self)]
-         [j (MOVE-j self)]
-         [b (Needle-bed n)])
-    (append
-     (SHIFT-cmds (SHIFT n r j))
-     (if (eq? 'f n)
-         (RACK-cmds (RACK (+ r j) (- j)))
-         (RACK-cmds (RACK (- r j) j))))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Operation type
@@ -213,6 +178,47 @@
      RACK
      SHIFT
      MOVE))
+
+(: op-copy (->* (Operation) (#:needle (Option Needle)
+                             #:target (Option Needle)) Operation))
+(define (op-copy op #:needle [n #f] #:target [t #f])
+  (when (and (not (false? n))
+             (not (op-needle? op)))
+    (error 'op-copy "cannot specify needle for operation ~a" op))
+  (when (and (not (false? t))
+             (not (op-target? op)))
+    (error 'op-copy "cannot specify target for operation ~a" op))
+  (let* ([n~ (or n (op-needle op))]
+         [t~ (or t (op-target op))]
+         [j (- (Needle-index t~)
+               (Needle-index n~))])
+    (cond [(Tuck?  op) (struct-copy Tuck op
+                                    [needle n~])]
+          [(Knit?  op) (struct-copy Knit op
+                                    [needle n~])]
+          [(Split? op) (struct-copy Split op
+                                    [needle n~]
+                                    [target t~])]
+          [(Miss?  op) (struct-copy Miss op
+                                    [needle n~])]
+          [(In?    op) (struct-copy In op
+                                    [needle n~])]
+          [(Out?   op) (struct-copy Out op
+                                    [needle n~])]
+          [(Drop?  op) (struct-copy Drop op
+                                    [needle n~])]
+          [(Xfer?  op) (struct-copy Xfer op
+                                    [needle n~]
+                                    [target t~])]
+          [(SHIFT? op) (struct-copy SHIFT op
+                                    [n n~]
+                                    [j j])]
+          [(MOVE?  op) (struct-copy MOVE op
+                                    [n n~]
+                                    [j j])]
+          [else (error 'op-copy "fallthrough error")])))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Instruction struct
 (struct Instruction
@@ -233,11 +239,79 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Pass type
+(define-type PassType
+  (U 'knit  ;; knit/tuck operations, etc.
+     'drop  ;; Drop operations
+     'xfer  ;; xfers without changes in racking
+     'move));; xfers plus changes in racking
+
+;; Pass struct
+(struct Pass
+  ([ops  : (Listof Operation)]
+   [dir  : (Option Dir)]
+   [type : PassType])
+  #:prefab)
+
+(: pass-dir : (Listof Operation) -> (Option Dir))
+(define (pass-dir p-ops)
+  (let loop : (Option Dir)
+    ([ops p-ops])
+    (if (null? ops)
+        #f
+        (let ([op (first ops)])
+          (if (op-dir? op)
+              (op-dir op)
+              (loop (cdr ops)))))))
+
+(: pass-type : (Listof Operation) -> PassType)
+(define (pass-type p-ops)
+  (let loop : PassType
+    ([ops p-ops])
+    (if (null? ops)
+        (if (ormap Drop? p-ops)
+            'drop
+            'xfer)
+        (let ([op (first ops)])
+          (if (op-dir? op)
+              'knit
+              (loop (cdr ops)))))))
+
+(: pass-split-at : Pass (Option Index) -> (Listof Pass))
+(define (pass-split-at self idx)
+  (let ([ops (Pass-ops self)])
+    (if (false? idx)
+        (list self)
+        (let* ([ops0  (take ops idx)]
+               [dir0  (pass-dir  ops0)]
+               [type0 (pass-type ops0)]
+               [pass0 (Pass ops0
+                            dir0
+                            type0)]
+               [ops1  (drop ops idx)]
+               [dir1  (pass-dir  ops1)]
+               [type1 (pass-type ops1)]
+               [pass1 (Pass ops1
+                            dir1
+                            type1)])
+          (list pass0 pass1)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; generic operation accessors
 ;; FIXME better with compile-time checks instead of all the conditional statements
 
-(: command-dir : Command -> Dir)
-(define (command-dir self)
+(: op-dir? : Operation -> Boolean)
+(define (op-dir? self)
+  (or (Tuck?  self)
+      (Knit?  self)
+      (Split? self)
+      (Miss?  self)
+      (In?    self)
+      (Out?   self)))
+
+(: op-dir : Operation -> Dir)
+(define (op-dir self)
   (cond [(Tuck?  self) (Direction-val (Tuck-direction  self))]
         [(Knit?  self) (Direction-val (Knit-direction  self))]
         [(Split? self) (Direction-val (Split-direction self))]
@@ -258,6 +332,19 @@
         [(Out?   self) (Direction-val (Out-direction   self))]
         [else (error 'fnitout "instruction does not specify a direction")]))
 
+(: op-needle? : Operation -> Boolean)
+(define (op-needle? self)
+  (or (Tuck?  self)
+      (Knit?  self)
+      (Split? self)
+      (Miss?  self)
+      (In?    self)
+      (Out?   self)
+      (Drop?  self)
+      (Xfer?  self)
+      (SHIFT? self)
+      (MOVE?  self)))
+
 (: op-needle : Operation -> Needle)
 (define (op-needle self)
   (cond [(Tuck?  self) (Tuck-needle  self)]
@@ -268,9 +355,16 @@
         [(Out?   self) (Out-needle   self)]
         [(Drop?  self) (Drop-needle  self)]
         [(Xfer?  self) (Xfer-needle  self)]
-        [(SHIFT? self) (SHIFT-n      self)]
-        [(MOVE?  self) (MOVE-n       self)]
+        [(SHIFT? self) (SHIFT-needle self)]
+        [(MOVE?  self) (MOVE-needle  self)]
         [else (error 'fnitout "instruction does not specify a needle")]))
+
+(: op-target? : Operation -> Boolean)
+(define (op-target? self)
+  (or (Split? self)
+      (Xfer?  self)
+      (SHIFT? self)
+      (MOVE?  self)))
 
 (: op-target : Operation -> Needle)
 (define (op-target self)
@@ -295,6 +389,8 @@
         [(Miss?  self) (list (Miss-carrier self))]
         [(In?    self) (list (In-carrier   self))]
         [(Out?   self) (list (Out-carrier  self))]
+        [(Drop?  self) null]
+        [(Xfer?  self) null]
         [else (error 'fnitout "instruction does not specify any carriers")]))
 
 (: op-racking : Operation -> Integer)
@@ -305,12 +401,12 @@
         [(MOVE?  self) (MOVE-racking  self)]
         [else (error 'fnitout "instruction does not specify racking")]))
 
-(: op-cmds : Operation -> (Listof Command))
-(define (op-cmds self)
+(: op->cmds : Operation -> (Listof Command))
+(define (op->cmds self)
   (cond [(Command? self) (list self)]
-        [(RACK?    self) (RACK-cmds  self)]
-        [(SHIFT?   self) (SHIFT-cmds self)]
-        [(MOVE?    self) (MOVE-cmds  self)]
+        [(RACK?    self) (RACK->cmds  self)]
+        [(SHIFT?   self) (SHIFT->cmds self)]
+        [(MOVE?    self) (MOVE->cmds  self)]
         [else (error 'fnitout "unrecognized operation ~a" self)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -321,7 +417,7 @@
 
 (: instruction-expand : Instruction -> (Listof (Pairof Command String)))
 (define (instruction-expand self)
-  (let* ([cmds (op-cmds (Instruction-op self))]
+  (let* ([cmds (op->cmds (Instruction-op self))]
          [comment (Instruction-comment self)]
          [cmd1 (car cmds)])
     (append
@@ -331,5 +427,142 @@
          (map (λ ([cmd : Command])
                 (cons cmd ""))
               (cdr cmds))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; functions to rewrite operation as list of commands
+
+(: RACK->cmds : RACK -> (Listof Command))
+(define (RACK->cmds self)
+  (let ([r (RACK-r self)]
+        [j (RACK-j self)])
+    (let loop ([i : Integer 0]
+               [a : (Listof Command) null])
+      (if (= i j)
+          (reverse a)
+          (let ([i~ (+ i (sign (- j i)))])
+            (loop i~
+                  (cons (Rack (+ r i~))
+                        a)))))))
+
+(: SHIFT->cmds : SHIFT -> (Listof Command))
+(define (SHIFT->cmds self)
+  (let* ([n (SHIFT-n self)]
+         [r (SHIFT-r self)]
+         [j (SHIFT-j self)]
+         [b (Needle-bed n)]
+         [x (Needle-index n)]
+         [x+j (+ x j)]
+         [x+r (+ x r)]
+         [x-r (- x r)])
+    (if (eq? 'f b)
+        `(,(Xfer n (Needle 'b x-r))
+          ,@(RACK->cmds (RACK r j))
+          ,(Xfer (Needle 'b x-r) (Needle 'f x+j)))
+        `(,(Xfer n (Needle 'f x+r))
+          ,@(RACK->cmds (RACK r (- j)))
+          ,(Xfer (Needle 'f x+r) (Needle 'b x+j))))))
+
+(: MOVE->cmds : MOVE -> (Listof Command))
+(define (MOVE->cmds self)
+  (let* ([n (MOVE-n self)]
+         [r (MOVE-r self)]
+         [j (MOVE-j self)]
+         [b (Needle-bed n)])
+    (append
+     (SHIFT->cmds (SHIFT n r j))
+     (if (eq? 'f b)
+         (RACK->cmds (RACK (+ r j) (- j)))
+         (RACK->cmds (RACK (- r j) j))))))
+
+#|
+;; or equivalently:
+(if (eq? 'f b)
+    (append
+     (RACK->cmds (RACK (+ r (- j))))
+     (SHIFT->cmds (SHIFT n (- r j) j)))
+    (append
+     (RACK->cmds (RACK (+ r j)))
+     (SHIFT->cmds (SHIFT n (+ r j) j))))
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; functions to rewrite list of commands as operation
+
+(: cmds->RACK : Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(define (cmds->RACK r j ops pos)
+  (when (zero? j)
+    (error 'fnitout "cmds->RACK ~a 0 is redundant" r))
+  (let ([len (length ops)])
+    (when (and (< pos len)
+               (equal? (list-ref ops pos)
+                       (RACK r j)))
+      ops)
+    (unless (< (+ pos (abs j)) len)
+      (error 'fnitout "cmds->RACK ~a ~a not possible at position ~a" r j pos))
+    (for ([i (in-range 0 j (sign j))])
+      (let ([op (list-ref ops (+ pos i))])
+        (unless (and (Rack? op)
+                     (= (+ r i)
+                        (Rack-racking op)))
+          (error 'fnitout "cmds->RACK ~a ~a not possible at position ~a" r j pos))))
+    (append
+     (take ops pos)
+     (list (RACK r j))
+     (drop ops (+ pos (abs j))))))
+
+(: cmds->SHIFT : Needle Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(define (cmds->SHIFT n r j ops pos)
+  (when (and (< pos (length ops))
+             (equal? (list-ref ops pos)
+                     (SHIFT n r j)))
+    ops)
+  (let* ([b (Needle-bed n)]
+         [ops~ (if (eq? 'f b)
+                   (cmds->RACK r     j ops (add1 pos))
+                   (cmds->RACK r (- j) ops (add1 pos)))])
+    (unless (< (+ 2 pos) (length ops~))
+      (error 'fnitout "cmds->SHIFT ~a ~a not possible at position ~a" n r j pos))
+    (let ([op1 (list-ref ops~ pos)]
+          [op2 (list-ref ops~ (+ 2 pos))])
+      (unless (and (Xfer? op1)
+                   (Xfer? op2))
+        (error 'fnitout "cmds->SHIFT ~a ~a not possible at position ~a" n r j pos))
+      (let ([n1 (op-needle op1)]
+            [t1 (op-target op1)]
+            [n2 (op-needle op2)]
+            [t2 (op-target op2)]
+            [x  (Needle-index n)])
+        (unless (and (equal? n1 n)
+                     (if (eq? 'f b)
+                         (and (equal? t1 (Needle 'b (- x r)))
+                              (equal? n2 (Needle 'b (- x r)))
+                              (equal? t2 (Needle 'f (+ x j))))
+                         (and (equal? t1 (Needle 'f (+ x r)))
+                              (equal? n2 (Needle 'f (+ x r)))
+                              (equal? t2 (Needle 'b (+ x j))))))
+          (error 'fnitout "cmds->SHIFT ~a ~a not possible at position ~a" n r j pos))
+        (append
+         (take ops~ pos)
+         (list (SHIFT n r j))
+         (drop ops (+ 2 pos)))))))
+
+;;  MOVE can also be written with the RACK operation first
+(: cmds->MOVE : Needle Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(define (cmds->MOVE n r j ops pos)
+  (when (and (< pos  (length ops))
+             (equal? (list-ref ops pos)
+                     (MOVE n r j)))
+    ops)
+  (let* ([b (Needle-bed n)]
+         [ops1 (cmds->SHIFT n r j ops pos)]
+         [ops2 (if (eq? 'f b)
+                   (cmds->RACK (+ r j) (- j) ops1 (add1 pos))
+                   (cmds->RACK (- r j) j     ops1 (add1 pos)))])
+    (append
+     (take ops2 pos)
+     (list (MOVE n r j))
+     (drop ops (+ 2 pos)))))
 
 ;; end

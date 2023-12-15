@@ -85,13 +85,13 @@
        (when (zero? (get-loops machine needle))
          (invalid "needle has no loops to drop")))]
     
-     [(Rack? cmd)
-      (let ([old (MachineState-racking machine)]
-            [new (Rack-racking cmd)])
-        (when (= old new)
-          (invalid "redundant Rack instruction"))
-        (unless (= 1 (abs (- old new)))
-          (invalid "Rack instruction can only change the racking by +/-1")))]))
+    [(Rack? cmd)
+     (let ([old (MachineState-racking machine)]
+           [new (Rack-racking cmd)])
+       (when (= old new)
+         (invalid "redundant Rack instruction"))
+       (unless (= 1 (abs (- old new)))
+         (invalid "Rack instruction can only change the racking by +/-1")))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -135,3 +135,97 @@
     (list msg))))
 
 ;; end
+
+
+;; test equivalence of MOVE operations with commands in differnt order
+(define caston4-ops : (Listof Operation)
+  (list
+   ;; cast on
+   (In   (Direction '-)
+         (Needle 'f 5)
+         (Carrier 1))
+   (Tuck (Direction '-)
+         (Needle 'f 4)
+         (Length 1.0)
+         (Yarn (Carrier 1)
+               (Length 1.0)))
+   (Miss (Direction '-)
+         (Needle 'f 3)
+         (Carrier 1))
+   (Tuck (Direction '-)
+         (Needle 'f 2)
+         (Length 1.0)
+         (Yarn (Carrier 1)
+               (Length 1.0)))
+   (Miss (Direction '-)
+         (Needle 'f 1)
+         (Carrier 1))
+   (Miss (Direction '-)
+         (Needle 'f 0)
+         (Carrier 1))
+   (Miss (Direction '+)
+         (Needle 'f 0)
+         (Carrier 1))
+   (Tuck (Direction '+)
+         (Needle 'f 1)
+         (Length 1.0)
+         (Yarn (Carrier 1)
+               (Length 1.0)))
+   (Miss (Direction '+)
+         (Needle 'f 2)
+         (Carrier 1))
+   (Tuck (Direction '+)
+         (Needle 'f 3)
+         (Length 1.0)
+         (Yarn (Carrier 1)
+               (Length 1.0)))
+   (Miss (Direction '+)
+         (Needle 'f 4)
+         (Carrier 1))))
+#|
+(define v1 (make-Validator 10 1))
+(define caston4-script (map (λ ([op : Operation])
+                  (Instruction op ""))
+                 caston4-ops))
+(validate v1 caston4-script)
+|#
+
+#|
+(define v1 (make-Validator 10 1))
+(define move1-ops
+  (append
+   caston4-ops
+   (list
+   (Miss (Direction '-)
+         (Needle 'f 4)
+         (Carrier 1))
+   (SHIFT (Needle 'f 4)
+          0
+          -1)
+   (RACK 1 -1)
+   )))
+(define move1-script (map (λ ([op : Operation])
+                  (Instruction op ""))
+                 move1-ops))
+(validate v1 move1-script)
+(println v1)
+
+(define v2 (make-Validator 10 1))
+(define move2-ops
+  (append
+   caston4-ops
+   (list
+   (Miss (Direction '-)
+         (Needle 'f 4)
+         (Carrier 1))
+   (RACK 0 1)
+   (SHIFT (Needle 'f 4)
+          1
+          -1)
+   )))
+(define move2-script (map (λ ([op : Operation])
+                  (Instruction op ""))
+                 move2-ops))
+(validate v2 move2-script)
+(println v2)
+|#
