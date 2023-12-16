@@ -41,8 +41,8 @@ We define the empty state as S∅ = (0, [], [], []).
   #:transparent)
 
 ;; constructor
-(: make-MachineState : Positive-Integer -> MachineState)
-(define (make-MachineState needle-count)
+(: make-state : Positive-Integer -> MachineState)
+(define (make-state needle-count)
   (MachineState
    0
    (make-hasheq
@@ -51,16 +51,16 @@ We define the empty state as S∅ = (0, [], [], []).
    (make-hasheq)
    (make-hasheq)))
 
-(: machine-copy : MachineState -> MachineState)
-(define (machine-copy machine)
-  (let ([loops (MachineState-loops machine)])
+(: state-copy : MachineState -> MachineState)
+(define (state-copy self)
+  (let ([loops (MachineState-loops self)])
     (MachineState
-     (MachineState-racking machine)
+     (MachineState-racking self)
      (make-hasheq
       (list (cons 'f (vector-copy (hash-ref loops 'f)))
             (cons 'b (vector-copy (hash-ref loops 'b)))))
-     (hash-copy (MachineState-carrier-positions machine))
-     (hash-copy (MachineState-attachments machine)))))
+     (hash-copy (MachineState-carrier-positions self))
+     (hash-copy (MachineState-attachments self)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -86,8 +86,8 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; returns number of loops at needle location
 (: get-loops : MachineState Needle -> Natural)
-(define (get-loops machine needle)
-  (let* ([loops (MachineState-loops machine)]
+(define (get-loops state needle)
+  (let* ([loops (MachineState-loops state)]
          [bed (Needle-bed needle)]
          [idx (Needle-index needle)]
          [vec (hash-ref loops bed)])
@@ -99,8 +99,8 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; sets number of loops at needle location
 (: set-loops! : MachineState Needle Natural -> Void)
-(define (set-loops! machine needle val)
-  (let* ([loops (MachineState-loops machine)]
+(define (set-loops! state needle val)
+  (let* ([loops (MachineState-loops state)]
          [bed (Needle-bed needle)]
          [idx (Needle-index needle)]
          [vec (hash-ref loops bed)])
@@ -108,40 +108,40 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; track newly created loops
 (: update-loops! : MachineState Command -> Void)
-(define (update-loops! machine cmd)
+(define (update-loops! state cmd)
   (let ([needle (op-needle cmd)]
         [yarns  (command-carriers cmd)])
-    (set-loops! machine needle (length yarns))))
+    (set-loops! state needle (length yarns))))
 
 ;; moves loop count from source needle to target
 (: move-loops! : MachineState Command -> Void)
-(define (move-loops! machine cmd)
+(define (move-loops! state cmd)
   (let ([needle (op-needle cmd)]
         [target (op-target cmd)]
         [yarns  (command-carriers cmd)])
     ;; move loop count
-    (set-loops! machine target (+ (get-loops machine target)
-                                  (get-loops machine needle)))
+    (set-loops! state target (+ (get-loops state target)
+                                  (get-loops state needle)))
     ;; track newly created loops
-    (update-loops! machine cmd)))
+    (update-loops! state cmd)))
 
 ;; sets physical position of yarn carriers
 (: set-carrier-positions! : MachineState Command -> Void)
-(define (set-carrier-positions! machine cmd)
-  (let* ([carrier-positions (MachineState-carrier-positions machine)]
+(define (set-carrier-positions! state cmd)
+  (let* ([carrier-positions (MachineState-carrier-positions state)]
          [dir (op-dir cmd)]
          [needle (op-needle cmd)]
          [carriers (command-carriers cmd)]
          [yarns (map Carrier-val carriers)]
-         [racking (MachineState-racking machine)])
+         [racking (MachineState-racking state)])
     (for ([y (in-list yarns)])
       (hash-set! carrier-positions y (carrier-physical-position racking needle dir)))))
 
 ;; sets attachments at needle specified by instruction
 ;; NB. JL also sets direction of attachment, but it is not used
 (: set-attachments! : MachineState Command -> Void)
-(define (set-attachments! machine cmd)
-  (let* ([attachments (MachineState-attachments machine)]
+(define (set-attachments! state cmd)
+  (let* ([attachments (MachineState-attachments state)]
          [needle (op-needle cmd)]
          [carriers (command-carriers cmd)]
          [yarns (map Carrier-val carriers)])
@@ -150,8 +150,8 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; moves all attached loops from source needle to target
 (: move-attachments! : MachineState Operation -> Void)
-(define (move-attachments! machine op)
-  (let ([attachments (MachineState-attachments machine)]
+(define (move-attachments! state op)
+  (let ([attachments (MachineState-attachments state)]
         [needle (op-needle op)]
         [target (op-target op)])
     (for ([y (in-hash-keys attachments)])
@@ -163,22 +163,16 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; run script, updating the machine state
 (: run-script! : MachineState Script -> Void)
-(define (run-script! machine script)
+(define (run-script! state script)
   (for ([instr (in-list script)])
-    (operate! machine (Instruction-op instr))))
-
-;; run pass, updating the machine state
-(: run-pass! : MachineState Pass -> Void)
-(define (run-pass! machine pass)
-  (for ([op (in-list (Pass-ops pass))])
-    (operate! machine op)))
+    (operate! state (Instruction-op instr))))
 
 ;; do operation, updating the machine state
 (: operate! : MachineState Operation -> Void)
-(define (operate! machine op)
+(define (operate! state op)
   (let ([cmds (op->cmds op)])
     (for ([cmd (in-list cmds)])
-      (do-command! machine cmd))))
+      (do-command! state cmd))))
 
 ;; updates machine state with first `n` operations from pos
 ;; returns list of operations with first `n` dropped
@@ -194,45 +188,45 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; do command, updating the machine state
 (: do-command! : MachineState Command -> Void)
-(define (do-command! machine cmd)
+(define (do-command! state cmd)
   (cond 
     [(Tuck? cmd)
      (let ([needle (Tuck-needle cmd)])
        ;; increment loop count
-       (set-loops! machine needle (add1 (get-loops machine needle))))
-     (set-attachments! machine cmd)
-     (set-carrier-positions! machine cmd)]
+       (set-loops! state needle (add1 (get-loops state needle))))
+     (set-attachments! state cmd)
+     (set-carrier-positions! state cmd)]
 
     [(Knit? cmd)
-     (update-loops! machine cmd)
-     (set-attachments! machine cmd)
-     (set-carrier-positions! machine cmd)]
+     (update-loops! state cmd)
+     (set-attachments! state cmd)
+     (set-carrier-positions! state cmd)]
 
     [(Split? cmd)
-     (move-loops! machine cmd)
-     (move-attachments! machine cmd)
-     (set-attachments! machine cmd)
-     (set-carrier-positions! machine cmd)]
+     (move-loops! state cmd)
+     (move-attachments! state cmd)
+     (set-attachments! state cmd)
+     (set-carrier-positions! state cmd)]
 
     [(or (Miss? cmd)
          (In? cmd))
-     (set-carrier-positions! machine cmd)]
+     (set-carrier-positions! state cmd)]
 
     [(Out? cmd)
-     (let ([carrier-positions (MachineState-carrier-positions machine)]
-           [attachments       (MachineState-attachments       machine)]
+     (let ([carrier-positions (MachineState-carrier-positions state)]
+           [attachments       (MachineState-attachments       state)]
            [c                 (Carrier-val (Out-carrier cmd))])
        (hash-remove! carrier-positions c)
        (hash-remove! attachments       c))]
 
     [(Drop? cmd)
-     (update-loops! machine cmd)]
+     (update-loops! state cmd)]
 
     [(Xfer? cmd)
-     (move-loops! machine cmd)
-     (move-attachments! machine cmd)]
+     (move-loops! state cmd)
+     (move-attachments! state cmd)]
 
     [(Rack? cmd)
-     (set-MachineState-racking! machine (Rack-racking cmd))]))
+     (set-MachineState-racking! state (Rack-racking cmd))]))
 
 ;; end

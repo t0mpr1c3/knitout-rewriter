@@ -89,7 +89,7 @@
 (define needle/c
   (struct/dc Needle
              [bed bed?]
-             [index integer?])) ;; FIXME set boundaries on needle index
+             [index integer?])) ;; FIXME set boundaries on needle index, also set offset to allow negative indexes
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

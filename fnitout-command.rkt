@@ -28,6 +28,10 @@
      '-))
 (define Dir? (make-predicate Dir))
 
+(: opposite : Dir -> Dir)
+(define (opposite dir)
+  (if (eq? '+ dir) '- '+))
+
 (define-type Bed
   (U 'f
      'b))
@@ -239,65 +243,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Pass type
-(define-type PassType
-  (U 'knit  ;; knit/tuck operations, etc.
-     'drop  ;; Drop operations
-     'xfer  ;; xfers without changes in racking
-     'move));; xfers plus changes in racking
-
-;; Pass struct
-(struct Pass
-  ([ops  : (Listof Operation)]
-   [dir  : (Option Dir)]
-   [type : PassType])
-  #:prefab)
-
-(: pass-dir : (Listof Operation) -> (Option Dir))
-(define (pass-dir p-ops)
-  (let loop : (Option Dir)
-    ([ops p-ops])
-    (if (null? ops)
-        #f
-        (let ([op (first ops)])
-          (if (op-dir? op)
-              (op-dir op)
-              (loop (cdr ops)))))))
-
-(: pass-type : (Listof Operation) -> PassType)
-(define (pass-type p-ops)
-  (let loop : PassType
-    ([ops p-ops])
-    (if (null? ops)
-        (if (ormap Drop? p-ops)
-            'drop
-            'xfer)
-        (let ([op (first ops)])
-          (if (op-dir? op)
-              'knit
-              (loop (cdr ops)))))))
-
-(: pass-split-at : Pass (Option Index) -> (Listof Pass))
-(define (pass-split-at self idx)
-  (let ([ops (Pass-ops self)])
-    (if (false? idx)
-        (list self)
-        (let* ([ops0  (take ops idx)]
-               [dir0  (pass-dir  ops0)]
-               [type0 (pass-type ops0)]
-               [pass0 (Pass ops0
-                            dir0
-                            type0)]
-               [ops1  (drop ops idx)]
-               [dir1  (pass-dir  ops1)]
-               [type1 (pass-type ops1)]
-               [pass1 (Pass ops1
-                            dir1
-                            type1)])
-          (list pass0 pass1)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ;; generic operation accessors
 ;; FIXME better with compile-time checks instead of all the conditional statements
 
@@ -380,6 +325,17 @@
         [(Knit?  self) (Knit-length  self)]
         [(Split? self) (Split-length self)]
         [else (error 'fnitout "instruction does not specify a loop length")]))
+
+(: command-carriers? : Command -> Boolean)
+(define (command-carriers? self)
+  (or (Tuck?  self)
+      (Knit?  self)
+      (Split? self)
+      (Miss?  self)
+      (In?    self)
+      (Out?   self)
+      (Drop?  self)
+      (Xfer?  self)))
 
 (: command-carriers : Command -> (Listof Carrier))
 (define (command-carriers self)
