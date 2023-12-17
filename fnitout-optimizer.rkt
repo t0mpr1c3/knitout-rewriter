@@ -26,7 +26,7 @@
 
 ;; rewrite rule 2
 ;; opposite, consecutive Rack commands cancel
-(: merge-rack : (Listof Operation) Natural -> (Listof Operation))
+(: merge-rack : OpList Natural -> OpList)
 (define (merge-rack ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'merge-rack "merge not possible at position ~a" pos))
@@ -48,7 +48,7 @@
 ;; when Miss at needle N and carrier C in one direction
 ;; is followed by Miss at needle N and carrier C in opposite direction,
 ;; both are eliminated
-(: merge-miss : (Listof Operation) Natural -> (Listof Operation))
+(: merge-miss : OpList Natural -> OpList)
 (define (merge-miss ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'merge-miss "merge not possible at position ~a" pos))
@@ -72,7 +72,7 @@
 
 ;; rewrite rule 3
 ;; eliminates the first of consecutive, opposite Xfers
-(: squish : (Listof Operation) Natural -> (Listof Operation))
+(: squish : OpList Natural -> OpList)
 (define (squish ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'squish "squish not possible at position ~a" pos))
@@ -94,7 +94,7 @@
 
 ;; rewrite rule 4
 ;; changes the needle location where Tuck is performed
-(: slide : (Listof Operation) Natural -> (Listof Operation))
+(: slide : OpList Natural -> OpList)
 (define (slide ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'slide "slide not possible at position ~a" pos))
@@ -118,7 +118,7 @@
 ;; rewrite rule 5
 ;; changes the needle location where Knit or Tuck is performed
 ;; Table 2
-(: conjugate : MachineState (Listof Operation) Natural Dir -> (Listof Operation))
+(: conjugate : MachineState OpList Natural Dir -> OpList)
 (define (conjugate machine ops pos dir)
   (when (> (add1 pos) (length ops))
     (error 'conjugate "eliminate not possible at position ~a" pos))
@@ -223,7 +223,7 @@
 ;; * Xfer when there are no loops on the source needle
 ;; * Rack when the racking is the current value
 
-(: eliminate : MachineState (Listof Operation) Natural -> (Listof Operation))
+(: eliminate : MachineState OpList Natural -> OpList)
 (define (eliminate machine ops pos)
   (unless (< (add1 pos) (length ops))
     (error 'eliminate "eliminate not possible at position ~a" pos))
@@ -248,7 +248,7 @@
 
 ;; extra rule
 ;; cancel consecutive, opposite Xfer/MOVE when there are no loops on the target
-(: cancel : MachineState (Listof Operation) Natural -> (Listof Operation))
+(: cancel : MachineState OpList Natural -> OpList)
 (define (cancel machine ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'cancel "cancel not possible at position ~a" pos))

@@ -18,7 +18,7 @@
 (define (swap state ops pos)
   (when (> (+ 2 pos) (length ops))
     (error 'swap "swap not possible at position ~a" pos))
-  (let* ([machine0 (state-copy state)]         
+  (let* ([machine0 (MachineState-copy state)]         
          [ops0 (update! machine0 ops pos)]
          [op1  (first  ops0)] ;; (list-ref ops pos)
          [op2  (second ops0)] ;; (list-ref ops (add1 pos))

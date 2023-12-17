@@ -37,6 +37,13 @@
      'b))
 (define Bed? (make-predicate Bed))
 
+(define-type Carriage
+  (U 'Knit
+     'Lace
+     ;'Garter ;; FIXME not yet implemented
+     ))
+(define-predicate Carriage? Carriage)
+
 (require/typed "fnitout-contracts.rkt"
                [#:struct Direction ([val : Dir])]
                [opposite-dir       (-> Direction Dir)]
@@ -176,12 +183,36 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Select operation for Knit carriage/Lace carriage
+(struct SELECT
+  ([needle : Needle])
+  #:prefab)
+
+(: move->select : Operation -> Operation)
+(define (move->select op)
+  (assert (MOVE? op))
+  (SELECT (MOVE-n op)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Deselect operation for  Knit carriage/Lace carriage
+(struct REJECT
+  ([needle : Needle])
+  #:prefab)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; Operation type
 (define-type Operation
   (U Command
      RACK
      SHIFT
-     MOVE))
+     MOVE
+     SELECT
+     REJECT))
+
+(define-type OpList
+  (Listof Operation))
 
 (: op-copy (->* (Operation) (#:needle (Option Needle)
                              #:target (Option Needle)) Operation))
@@ -196,30 +227,34 @@
          [t~ (or t (op-target op))]
          [j (- (Needle-index t~)
                (Needle-index n~))])
-    (cond [(Tuck?  op) (struct-copy Tuck op
+    (cond [(Tuck?   op) (struct-copy Tuck op
                                     [needle n~])]
-          [(Knit?  op) (struct-copy Knit op
+          [(Knit?   op) (struct-copy Knit op
                                     [needle n~])]
-          [(Split? op) (struct-copy Split op
+          [(Split?  op) (struct-copy Split op
                                     [needle n~]
                                     [target t~])]
-          [(Miss?  op) (struct-copy Miss op
+          [(Miss?   op) (struct-copy Miss op
                                     [needle n~])]
-          [(In?    op) (struct-copy In op
+          [(In?     op) (struct-copy In op
                                     [needle n~])]
-          [(Out?   op) (struct-copy Out op
+          [(Out?    op) (struct-copy Out op
                                     [needle n~])]
-          [(Drop?  op) (struct-copy Drop op
+          [(Drop?   op) (struct-copy Drop op
                                     [needle n~])]
-          [(Xfer?  op) (struct-copy Xfer op
+          [(Xfer?   op) (struct-copy Xfer op
                                     [needle n~]
                                     [target t~])]
-          [(SHIFT? op) (struct-copy SHIFT op
+          [(SHIFT?  op) (struct-copy SHIFT op
                                     [n n~]
                                     [j j])]
-          [(MOVE?  op) (struct-copy MOVE op
+          [(MOVE?   op) (struct-copy MOVE op
                                     [n n~]
                                     [j j])]
+          [(SELECT? op) (struct-copy SELECT op
+                                    [needle n~])]
+          [(REJECT? op) (struct-copy REJECT op
+                                    [needle n~])]
           [else (error 'op-copy "fallthrough error")])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -279,29 +314,33 @@
 
 (: op-needle? : Operation -> Boolean)
 (define (op-needle? self)
-  (or (Tuck?  self)
-      (Knit?  self)
-      (Split? self)
-      (Miss?  self)
-      (In?    self)
-      (Out?   self)
-      (Drop?  self)
-      (Xfer?  self)
-      (SHIFT? self)
-      (MOVE?  self)))
+  (or (Tuck?   self)
+      (Knit?   self)
+      (Split?  self)
+      (Miss?   self)
+      (In?     self)
+      (Out?    self)
+      (Drop?   self)
+      (Xfer?   self)
+      (SHIFT?  self)
+      (MOVE?   self)
+      (SELECT? self)
+      (REJECT? self)))
 
 (: op-needle : Operation -> Needle)
 (define (op-needle self)
-  (cond [(Tuck?  self) (Tuck-needle  self)]
-        [(Knit?  self) (Knit-needle  self)]
-        [(Split? self) (Split-needle self)]
-        [(Miss?  self) (Miss-needle  self)]
-        [(In?    self) (In-needle    self)]
-        [(Out?   self) (Out-needle   self)]
-        [(Drop?  self) (Drop-needle  self)]
-        [(Xfer?  self) (Xfer-needle  self)]
-        [(SHIFT? self) (SHIFT-needle self)]
-        [(MOVE?  self) (MOVE-needle  self)]
+  (cond [(Tuck?   self) (Tuck-needle  self)]
+        [(Knit?   self) (Knit-needle  self)]
+        [(Split?  self) (Split-needle self)]
+        [(Miss?   self) (Miss-needle  self)]
+        [(In?     self) (In-needle    self)]
+        [(Out?    self) (Out-needle   self)]
+        [(Drop?   self) (Drop-needle  self)]
+        [(Xfer?   self) (Xfer-needle  self)]
+        [(SHIFT?  self) (SHIFT-needle self)]
+        [(MOVE?   self) (MOVE-needle  self)]
+        [(SELECT? self) (SELECT-needle self)]
+        [(REJECT? self) (REJECT-needle self)]
         [else (error 'fnitout "instruction does not specify a needle")]))
 
 (: op-target? : Operation -> Boolean)
@@ -446,7 +485,7 @@
 
 ;; functions to rewrite list of commands as operation
 
-(: cmds->RACK : Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(: cmds->RACK : Integer Integer OpList Natural -> OpList)
 (define (cmds->RACK r j ops pos)
   (when (zero? j)
     (error 'fnitout "cmds->RACK ~a 0 is redundant" r))
@@ -468,7 +507,7 @@
      (list (RACK r j))
      (drop ops (+ pos (abs j))))))
 
-(: cmds->SHIFT : Needle Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(: cmds->SHIFT : Needle Integer Integer OpList Natural -> OpList)
 (define (cmds->SHIFT n r j ops pos)
   (when (and (< pos (length ops))
              (equal? (list-ref ops pos)
@@ -505,7 +544,7 @@
          (drop ops (+ 2 pos)))))))
 
 ;;  MOVE can also be written with the RACK operation first
-(: cmds->MOVE : Needle Integer Integer (Listof Operation) Natural -> (Listof Operation))
+(: cmds->MOVE : Needle Integer Integer OpList Natural -> OpList)
 (define (cmds->MOVE n r j ops pos)
   (when (and (< pos  (length ops))
              (equal? (list-ref ops pos)

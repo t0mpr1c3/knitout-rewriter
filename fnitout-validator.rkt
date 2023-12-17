@@ -68,7 +68,7 @@
 (: validate-cmd : Validator Command -> Void)
 (define (validate-cmd self cmd)
   (let ([state (Validator-state self)])
-    (when (and (validator-has-rule? self 'NoSplit)
+    (when (and (validator-has-rule? self 'KnitCarriage)
                (Split? cmd))
       (invalid "Split operation is not permitted"))
     
@@ -214,7 +214,7 @@
 
 #|
 ;; test equivalence of MOVE operations with commands in different order
-(define caston4-ops : (Listof Operation)
+(define caston4-ops : OpList
   (list
    ;; cast on
    (In   (Direction '-)

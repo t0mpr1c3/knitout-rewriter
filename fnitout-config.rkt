@@ -7,17 +7,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-type Carriage
-  (U 'Knit
-     'Lace
-     ;'Garter ;; FIXME not yet implemented
-     ))
-(define-predicate Carriage? Carriage)
-
 ;; holds machine configuration
 (struct MachineConfig
   ([needle-count  : Positive-Integer]
    [carrier-count : Positive-Integer]
+   [beds          : (Listof Bed)]
    [carriages     : (Listof Carriage)]))
 
 ;; access function

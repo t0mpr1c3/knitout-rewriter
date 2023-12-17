@@ -32,17 +32,24 @@ loop. An inactive carrier (with value ⊥) is not attached.
 We define the empty state as S∅ = (0, [], [], []).
 |#
 
+(define-type Loops
+  (Mutable-HashTable Bed (Vectorof Natural)))
+(define-type CarrierPositions
+  (Mutable-HashTable Positive-Integer Integer))
+(define-type Attachments
+  (HashTable Positive-Integer Needle))
+
 (struct MachineState
   ([racking : Integer] ;; racking offset
-   [loops : (HashTable Bed (Vectorof Natural))] ;; bed[index] -> loop count
-   [carrier-positions : (HashTable Positive-Integer Integer)] ;; physical yarn carrier positions
-   [attachments : (HashTable Positive-Integer Needle)]) ;; logical last-loop positions
+   [loops : Loops] ;; bed[index] -> loop count
+   [carrier-positions : CarrierPositions] ;; physical yarn carrier positions
+   [attachments : Attachments]) ;; logical last-loop positions
   #:mutable
   #:transparent)
 
 ;; constructor
-(: make-state : Positive-Integer -> MachineState)
-(define (make-state needle-count)
+(: make-MachineState : Positive-Integer -> MachineState)
+(define (make-MachineState needle-count)
   (MachineState
    0
    (make-hasheq
@@ -51,8 +58,8 @@ We define the empty state as S∅ = (0, [], [], []).
    (make-hasheq)
    (make-hasheq)))
 
-(: state-copy : MachineState -> MachineState)
-(define (state-copy self)
+(: MachineState-copy : MachineState -> MachineState)
+(define (MachineState-copy self)
   (let ([loops (MachineState-loops self)])
     (MachineState
      (MachineState-racking self)
@@ -61,6 +68,40 @@ We define the empty state as S∅ = (0, [], [], []).
             (cons 'b (vector-copy (hash-ref loops 'b)))))
      (hash-copy (MachineState-carrier-positions self))
      (hash-copy (MachineState-attachments self)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-type CarriageSides
+  (Mutable-HashTable Dir (Listof Carriage)))
+(define-type Selection
+  (Mutable-HashTable Bed (Vectorof Integer)))
+
+(struct CarriageState
+  ([carriage-side : CarriageSides]  ;; '- means carriages starting on Left, '+ means carriages starting on Right
+   [selection     : Selection]      ;; Needle selection used in instructions to KM. 0 = not selected, 1 = selected
+   [machine       : MachineState])
+  #:transparent)
+
+(: CarriageState-copy : CarriageState -> CarriageState)
+(define (CarriageState-copy self)
+  (CarriageState
+   (hash-copy         (CarriageState-carriage-side self))
+   (hash-copy         (CarriageState-selection     self))
+   (MachineState-copy (CarriageState-machine       self))))
+
+(: knit-carriage-side : CarriageSides -> Dir)
+(define (knit-carriage-side carriage-side)
+  (if (eq? 'Knit (car (hash-ref carriage-side '-)))
+      '-
+      (if (eq? 'Knit (car (hash-ref carriage-side '+)))
+          '+
+          (error 'schedule-passes "Knit carriage is in an unexpected location"))))
+
+(: update-selection! : CarriageState (Listof Bed) Selection -> Void)
+(define (update-selection! state beds sel)
+  (let ([selection (CarriageState-selection state)])
+    (for ([b (in-list beds)])
+      (hash-set! selection b (hash-ref sel b)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -121,7 +162,7 @@ We define the empty state as S∅ = (0, [], [], []).
         [yarns  (command-carriers cmd)])
     ;; move loop count
     (set-loops! state target (+ (get-loops state target)
-                                  (get-loops state needle)))
+                                (get-loops state needle)))
     ;; track newly created loops
     (update-loops! state cmd)))
 
@@ -167,6 +208,12 @@ We define the empty state as S∅ = (0, [], [], []).
   (for ([instr (in-list script)])
     (operate! state (Instruction-op instr))))
 
+;; do list of operations, updating the machine state
+(: run! : MachineState OpList -> Void)
+(define (run! state ops)
+  (for ([op (in-list ops)])
+    (operate! state op)))
+
 ;; do operation, updating the machine state
 (: operate! : MachineState Operation -> Void)
 (define (operate! state op)
@@ -176,7 +223,7 @@ We define the empty state as S∅ = (0, [], [], []).
 
 ;; updates machine state with first `n` operations from pos
 ;; returns list of operations with first `n` dropped
-(: update! : MachineState (Listof Operation) Natural -> (Listof Operation))
+(: update! : MachineState OpList Natural -> OpList)
 (define (update! machine ops n)
   (if (zero? n)
       ops
